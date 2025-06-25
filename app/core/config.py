@@ -1,9 +1,14 @@
-from pydantic import BaseSettings
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 class Settings(BaseSettings):
-    DATABASE_URL: str
+    database_url: str = Field(..., alias="DATABASE_URL")
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).resolve().parent.parent.parent / ".env"),
+        env_file_encoding="utf-8",
+        extra="allow"  # Ignore unused variables
+    )
 
 settings = Settings()
