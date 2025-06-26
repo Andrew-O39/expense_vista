@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
-
+# Base class with shared fields
 class ExpenseBase(BaseModel):
     """
     Shared fields used for both reading and writing expense data.
@@ -21,7 +21,7 @@ class ExpenseBase(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
 
-
+# Schema for creation
 class ExpenseCreate(ExpenseBase):
     """
     Schema for creating a new expense.
@@ -29,7 +29,7 @@ class ExpenseCreate(ExpenseBase):
     """
     user_id: int # Required when creating an expense
 
-
+# Schema for update (all fields optional)
 class ExpenseUpdate(ExpenseBase):
     """
     Schema for updating an existing expense.
@@ -37,7 +37,7 @@ class ExpenseUpdate(ExpenseBase):
     """
     pass  # Optional update schema (patch)
 
-
+# Schema for API response
 class ExpenseOut(ExpenseBase):
     """
     Schema for returning an expense from the API.
@@ -51,10 +51,3 @@ class ExpenseOut(ExpenseBase):
     class Config:
         orm_mode = True  # Allows automatic conversion from SQLAlchemy model to Pydantic schema. It tells Pydantic to read data as ORM objects
 
-
-class Expense(ExpenseInDBBase):
-    """
-    Response schema for returning complete Expense records.
-    Inherits from ExpenseInDBBase which includes ORM config.
-    """
-    pass
