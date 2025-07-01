@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from expense_tracker.app.db.base import Base
 from expense_tracker.app.core.config import settings
 
@@ -10,6 +10,14 @@ SQLALCHEMY_DATABASE_URL = settings.database_url
 engine = create_engine(SQLALCHEMY_DATABASE_URL)  # sync engine
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Dependency to provide a database session
+def get_db() -> Session:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Create tables for local testing
 if __name__ == "__main__":

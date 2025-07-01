@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from expense_tracker.app.api.routes import expense
 
 # Create the FastAPI application instance
 app = FastAPI(
@@ -24,3 +25,5 @@ def health_check():
     Commonly used by monitoring tools or load balancers.
     """
     return {"status": "ok"}
+
+app.include_router(expense.router)

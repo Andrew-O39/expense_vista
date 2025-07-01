@@ -6,38 +6,40 @@ These schemas define how expense data is validated and structured when:
 - sending data back to the client (output)
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, confloat
 from typing import Optional
 from datetime import datetime
 
-# Base class with shared fields
+
 class ExpenseBase(BaseModel):
     """
     Shared fields used for both reading and writing expense data.
 
     This schema can be inherited by other schemas like ExpenseCreate and ExpenseUpdate.
     """
-    amount: float
+    amount: confloat(gt=0)
     description: Optional[str] = None
     category: Optional[str] = None
 
-# Schema for creation
+
 class ExpenseCreate(ExpenseBase):
     """
     Schema for creating a new expense.
-    In addition to base fields, the user_id is required to link the expense to a user.
+    Inherits required fields from ExpenseBase.
     """
-    user_id: int # Required when creating an expense
+    pass
 
-# Schema for update (all fields optional)
-class ExpenseUpdate(ExpenseBase):
+
+class ExpenseUpdate(BaseModel):
     """
     Schema for updating an existing expense.
     All fields are optional; allows partial updates.
     """
-    pass  # Optional update schema (patch)
+    amount: Optional[confloat(gt=0)] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
 
-# Schema for API response
+
 class ExpenseOut(ExpenseBase):
     """
     Schema for returning an expense from the API.
@@ -49,5 +51,4 @@ class ExpenseOut(ExpenseBase):
     user_id: int
 
     class Config:
-        orm_mode = True  # Allows automatic conversion from SQLAlchemy model to Pydantic schema. It tells Pydantic to read data as ORM objects
-
+        orm_mode = True  # Enables ORM-to-Pydantic conversion
