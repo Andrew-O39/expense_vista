@@ -13,23 +13,32 @@ from expense_tracker.app.core.security import get_password_hash
 # ------------------------------
 def create_user(db: Session, user: UserCreate) -> User:
     """
-    Create and persist a new with a hashed password.
+    Create a new user in the database.
+
+    Hashes the user's password before storing it securely in the 'users' table.
+
     Args:
-        db (Session): SQLAlchemy DB session.
-        user (UserCreate): Incoming user data (includes plain-text password).
+        db (Session): SQLAlchemy database session.
+        user (UserCreate): User creation schema with username, email, and raw password.
 
     Returns:
         User: The created user instance.
     """
-    hashed_pw = get_password_hash(user.password)
+    # Hash the plain password
+    hashed_password = get_password_hash(user.password)
+
+    # Create a new User instance
     db_user = User(
         username=user.username,
         email=user.email,
-        hashed_password=hashed_pw
+        hashed_password=hashed_password
     )
+
+    # Add the user to the session and commit
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
     return db_user
 
 # ------------------------------

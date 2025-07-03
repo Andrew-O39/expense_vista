@@ -15,8 +15,8 @@ class UserBase(BaseModel):
     """
     Shared fields for reading and writing user data
     """
-    username: str = Field(..., exclude="andrew_owusu")
-    email: EmailStr = Field(..., examples="andrew@example.com")
+    username: str = Field(..., examples=["andrew_owusu"])
+    email: EmailStr = Field(..., examples=["andrew@example.com"])
 
 
 # ------------------------------
@@ -27,7 +27,7 @@ class UserCreate(UserBase):
     Schema used when a new user is registering.
     Requires a plain.text password.
     """
-    password: str = Field(..., min_length=6, examples="password123")
+    password: str = Field(..., min_length=6, examples=["password123"])
 
 
 # ------------------------------
@@ -49,6 +49,7 @@ class UserOut(UserBase):
     Schema returned to the client after user registration or authentication.
     Excludes sensitive fields like hashed_password.
     """
+    id: int
 
     class Config:
         orm_mode = True # Enables conversion from SQLAlchemy model to Pydantic model

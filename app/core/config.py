@@ -3,12 +3,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 class Settings(BaseSettings):
+    # ------------------------
+    # Database
+    # ------------------------
     database_url: str = Field(..., alias="DATABASE_URL")
 
+    # ------------------------
+    # Authentication / Security
+    # ------------------------
+    secret_key: str = Field(..., alias="SECRET_KEY")
+    algorithm: str = Field(default="HS256", alias="ALGORITHM")
+    access_token_expire_minutes: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+
+    # ------------------------
+    # Pydantic SettingsConfig
+    # ------------------------
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).resolve().parent.parent.parent / ".env"),
         env_file_encoding="utf-8",
-        extra="allow"  # Ignore unused variables
+        extra="allow"  # Allows extra variables in .env without throwing errors
     )
 
+# Create a global settings instance
 settings = Settings()
