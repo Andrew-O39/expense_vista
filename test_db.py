@@ -1,4 +1,4 @@
-from expense_tracker.app.db.session import engine
+from app.db.session import engine
 from sqlalchemy import text
 
 def test_connection():

@@ -4,8 +4,8 @@ Handles creation, retrieval, updating, and deletion of expense records.
 """
 
 from sqlalchemy.orm import Session
-from expense_tracker.app.db.models.expense import Expense
-from expense_tracker.app.schemas.expense import ExpenseCreate, ExpenseUpdate
+from app.db.models.expense import Expense
+from app.schemas.expense import ExpenseCreate, ExpenseUpdate
 
 # ----------------------------
 # Create a new expense

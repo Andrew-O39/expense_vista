@@ -3,10 +3,10 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from expense_tracker.app.db.session import get_db
-from expense_tracker.app.crud import user as crud_user
-from expense_tracker.app.db.models.user import User
-from expense_tracker.app.core.config import settings
+from app.db.session import get_db
+from app.crud import user as crud_user
+from app.db.models.user import User
+from app.core.config import settings
 
 # Tell FastAPI where to expect the token (Authorization header)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")

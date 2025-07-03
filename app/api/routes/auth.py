@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from expense_tracker.app.api.routes.expense import router
-from expense_tracker.app.db.session import get_db
-from expense_tracker.app.crud import user as crud_user
-from expense_tracker.app.core.security import verify_password, create_access_token
-from expense_tracker.app.schemas.token import Token
-from expense_tracker.app.schemas.user import UserCreate, UserOut
-from expense_tracker.app.api.deps import get_current_user
-from expense_tracker.app.db.models.user import User
+from app.api.routes.expense import router
+from app.db.session import get_db
+from app.crud import user as crud_user
+from app.core.security import verify_password, create_access_token
+from app.schemas.token import Token
+from app.schemas.user import UserCreate, UserOut
+from app.api.deps import get_current_user
+from app.db.models.user import User
 
 
 router = APIRouter(tags=["Authentication"])
@@ -47,7 +47,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     if crud_user.get_user_by_username(db, user.username):
         raise HTTPException(status_code=400, detail="Username already taken")
 
-    # Check for existing email (optional but recommended)
+    # Check for existing email
     if crud_user.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail="Email already registered")
 

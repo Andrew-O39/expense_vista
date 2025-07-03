@@ -7,7 +7,7 @@ Each user can own multiple expenses and budgets, managed through defined relatio
 
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import relationship
-from expense_tracker.app.db.base import Base
+from app.db.base import Base
 
 class User(Base):
     """

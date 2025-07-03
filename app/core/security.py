@@ -10,7 +10,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt
 
-from expense_tracker.app.core.config import settings
+from app.core.config import settings
 
 # Config values loaded from env variables
 SECRET_KEY = settings.secret_key

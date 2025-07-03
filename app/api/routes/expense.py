@@ -11,11 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
-from expense_tracker.app.schemas.expense import ExpenseOut, ExpenseCreate, ExpenseUpdate
-from expense_tracker.app.db.session import get_db
-from expense_tracker.app.crud import expense as crud_expense
-from expense_tracker.app.api.deps import get_current_user
-from expense_tracker.app.db.models.user import User
+from app.schemas.expense import ExpenseOut, ExpenseCreate, ExpenseUpdate
+from app.db.session import get_db
+from app.crud import expense as crud_expense
+from app.api.deps import get_current_user
+from app.db.models.user import User
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
 

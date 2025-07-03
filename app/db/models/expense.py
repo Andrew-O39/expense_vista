@@ -2,7 +2,7 @@
 Represents a single expense entry.
 Linked to a specific user via a foreign key.
 """
-from expense_tracker.app.db.base import Base
+from app.db.base import Base
 from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -14,6 +14,7 @@ class Expense(Base):
     amount = Column(Float, nullable=False)
     description = Column(String, nullable=True)
     category = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

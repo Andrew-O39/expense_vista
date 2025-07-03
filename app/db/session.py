@@ -1,9 +1,9 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from expense_tracker.app.db.base import Base
-from expense_tracker.app.core.config import settings
+from app.db.base import Base
+from app.core.config import settings
 
-from expense_tracker.app.db.base_class import *  # Import all models
+from app.db.base_class import *  # Import all models
 
 SQLALCHEMY_DATABASE_URL = settings.database_url
 

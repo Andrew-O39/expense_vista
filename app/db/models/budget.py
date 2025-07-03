@@ -2,7 +2,7 @@
 This model represents a user's budget for a specific category or time period.
 Each budget is linked to a user.
 """
-from expense_tracker.app.db.base import Base # Base = declarative_base()
+from app.db.base import Base # Base = declarative_base()
 from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime

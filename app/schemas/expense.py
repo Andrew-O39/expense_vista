@@ -20,6 +20,7 @@ class ExpenseBase(BaseModel):
     amount: confloat(gt=0)
     description: Optional[str] = None
     category: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ExpenseCreate(ExpenseBase):
@@ -38,6 +39,7 @@ class ExpenseUpdate(BaseModel):
     amount: Optional[confloat(gt=0)] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ExpenseOut(ExpenseBase):

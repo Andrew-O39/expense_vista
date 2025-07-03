@@ -4,9 +4,9 @@ Handles creation and retrieval of users, primarily for registration and authenti
 """
 
 from sqlalchemy.orm import Session
-from expense_tracker.app.db.models.user import User
-from expense_tracker.app.schemas.user import UserCreate
-from expense_tracker.app.core.security import get_password_hash
+from app.db.models.user import User
+from app.schemas.user import UserCreate
+from app.core.security import get_password_hash
 
 # ------------------------------
 # Create a new user

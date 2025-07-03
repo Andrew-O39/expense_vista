@@ -1,8 +1,8 @@
 # create_test_user.py
 
 from sqlalchemy.orm import Session
-from expense_tracker.app.db.session import SessionLocal
-from expense_tracker.app.db.models.user import User
+from app.db.session import SessionLocal
+from app.db.models.user import User
 from passlib.context import CryptContext
 
 # Password hasher setup
