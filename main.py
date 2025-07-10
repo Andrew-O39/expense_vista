@@ -4,7 +4,8 @@ from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel, SecurityScheme
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
 
-from app.api.routes import expense, auth
+from app.api.routes import expense, auth, budget
+
 
 app = FastAPI(
     title="Expense Tracker API",
@@ -58,3 +59,4 @@ def health_check():
 # Include routers
 app.include_router(expense.router)
 app.include_router(auth.router)
+app.include_router(budget.router)
