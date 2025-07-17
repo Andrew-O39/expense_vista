@@ -13,12 +13,11 @@ class Expense(Base):
     id = Column(Integer, primary_key=True, index=True)
     amount = Column(Float, nullable=False)
     description = Column(String, nullable=True)
-    category = Column(String, nullable=True)
+    category = Column(String, nullable=False)
     notes = Column(String, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
     # Relationship back to User
     owner = relationship("User", back_populates="expenses")
 

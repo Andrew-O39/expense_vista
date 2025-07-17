@@ -6,6 +6,7 @@ Handles creation, retrieval, updating, and deletion of expense records.
 from sqlalchemy.orm import Session
 from app.db.models.expense import Expense
 from app.schemas.expense import ExpenseCreate, ExpenseUpdate
+from app.services.alert_logic import check_budget_alerts
 
 # ----------------------------
 # Create a new expense
@@ -26,6 +27,10 @@ def create_expense(db: Session, expense_create: ExpenseCreate, user_id: int) -> 
     db.add(db_expense)
     db.commit()
     db.refresh(db_expense)
+
+    # Automatically check for alerts after expense creation
+    check_budget_alerts(user_id, db)
+
     return db_expense
 
 

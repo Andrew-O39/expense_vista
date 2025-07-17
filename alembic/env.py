@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.core.config import settings
 from app.db.base import Base  # Import Base
 from app.db.session import engine
-
+from app.db.models import user, expense, budget, alert_log
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

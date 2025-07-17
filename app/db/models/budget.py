@@ -11,9 +11,9 @@ class Budget(Base):
     __tablename__ = "budgets"
 
     id = Column(Integer, primary_key=True, index=True)
-    limit_amount = Column(Float, nullable=False)  # renamed from limit
-    category = Column(String, nullable=True)
-    period = Column(String, nullable=True)  # "weekly", "monthly", or "yearly"
+    limit_amount = Column(Float, nullable=False)
+    category = Column(String, nullable=False)
+    period = Column(String, nullable=False)  # "weekly", "monthly", or "yearly"
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     notes = Column(Text, nullable=True)

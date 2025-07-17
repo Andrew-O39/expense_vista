@@ -4,8 +4,9 @@ SQLAlchemy model definition for the User entity.
 This model represents registered users in the expense tracking application.
 Each user can own multiple expenses and budgets, managed through defined relationships.
 """
+from datetime import datetime
 
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 
@@ -27,12 +28,11 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    # -------------------------
-    # Relationships
-    # -------------------------
     expenses = relationship("Expense", back_populates="owner", cascade="all, delete")
     budgets = relationship("Budget", back_populates="owner", cascade="all, delete")
+    alert_logs = relationship("AlertLog", back_populates="user")
 
     def __repr__(self):
         return f"<User(username={self.username}, email={self.email})>"
