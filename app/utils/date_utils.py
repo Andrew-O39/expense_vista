@@ -8,6 +8,8 @@ def get_date_range(today: datetime, period: str) -> Tuple[datetime, datetime]:
     Returns the start and end date for a given period.
     Supported periods: 'weekly', 'monthly', 'yearly'
     """
+    period = period.lower().strip()  # Normalize input
+
     if period == "weekly":
         start = today - timedelta(days=today.weekday())  # Monday
         end = start + timedelta(days=6)  # Sunday

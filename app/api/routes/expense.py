@@ -31,7 +31,6 @@ def create_expense(
 ):
     """
     Create a new expense record for the authenticated user.
-
     Requires amount, category, and optional description. Returns the created expense.
     """
     return crud_expense.create_expense(db=db, expense_create=expense, user_id=current_user.id)
@@ -41,13 +40,26 @@ def create_expense(
 # -----------------------------
 @router.get("/", response_model=List[ExpenseOut])
 def read_expenses_by_user(
+    skip: int = 0,
+    limit: int = 10,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Retrieve a list of all expenses for the currently authenticated user.
+
+    Pagination:
+    - `skip`: Number of records to skip (for pagination)
+    - `limit`: Maximum number of records to return
+
+    Example: `/expenses/?skip=10&limit=5`
     """
-    return crud_expense.get_expenses_by_user(db, user_id=current_user.id)
+    return crud_expense.get_expenses_by_user(
+        db=db,
+        user_id=current_user.id,
+        skip=skip,
+        limit=limit
+    )
 
 # -----------------------------
 # Get a specific expense

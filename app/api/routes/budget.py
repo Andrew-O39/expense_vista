@@ -25,13 +25,24 @@ def create_budget(
 
 @router.get("/", response_model=List[BudgetOut])
 def get_user_budgets(
+    skip: int = 0,
+    limit: int = 10,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve all budgets belonging to the authenticated user.
+    Retrieve a paginated list of budgets belonging to the authenticated user.
+
+    Pagination:
+    - `skip`: Number of budgets to skip (default 0)
+    - `limit`: Maximum number of budgets to return (default 10)
     """
-    return crud_budget.get_user_budgets(db=db, user_id=current_user.id)
+    return crud_budget.get_user_budgets(
+        db=db,
+        user_id=current_user.id,
+        skip=skip,
+        limit=limit
+    )
 
 
 @router.get("/{budget_id}", response_model=BudgetOut)

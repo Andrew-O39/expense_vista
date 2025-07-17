@@ -1,12 +1,8 @@
-"""
-CRUD operations for Expense model.
-Handles creation, retrieval, updating, and deletion of expense records.
-"""
-
 from sqlalchemy.orm import Session
 from app.db.models.expense import Expense
 from app.schemas.expense import ExpenseCreate, ExpenseUpdate
 from app.services.alert_logic import check_budget_alerts
+
 
 # ----------------------------
 # Create a new expense
@@ -14,16 +10,12 @@ from app.services.alert_logic import check_budget_alerts
 def create_expense(db: Session, expense_create: ExpenseCreate, user_id: int) -> Expense:
     """
     Create and store a new Expense in the database, associated with a specific user.
-
-    Args:
-        db (Session): SQLAlchemy database session.
-        expense_create (ExpenseCreate): Validated Pydantic schema with expense data.
-        user_id (int): ID of the user who owns the expense.
-
-    Returns:
-        Expense: The newly created Expense ORM object.
     """
-    db_expense = Expense(**expense_create.dict(), user_id=user_id)
+    # Normalize category to lowercase
+    expense_data = expense_create.dict()
+    expense_data["category"] = expense_data["category"].strip().lower()
+
+    db_expense = Expense(**expense_data, user_id=user_id)
     db.add(db_expense)
     db.commit()
     db.refresh(db_expense)
@@ -40,33 +32,25 @@ def create_expense(db: Session, expense_create: ExpenseCreate, user_id: int) -> 
 def get_expense(db: Session, expense_id: int) -> Expense | None:
     """
     Retrieve a single Expense by its ID.
-
-    Args:
-        db (Session): SQLAlchemy session.
-        expense_id (int): ID of the expense to retrieve.
-
-    Returns:
-        Expense | None: The Expense if found, otherwise None.
     """
     return db.query(Expense).filter(Expense.id == expense_id).first()
-
 
 
 # ----------------------------
 # Get all expenses for a user
 # ----------------------------
-def get_expenses_by_user(db: Session, user_id: int) -> list[Expense]:
+def get_expenses_by_user(db: Session,user_id: int, skip: int = 0, limit: int = 10) -> list[Expense]:
     """
     Retrieve all expenses that belong to a given user.
-
-    Args:
-        db (Session): SQLAlchemy session.
-        user_id (int): ID of the user whose expenses to fetch.
-
-    Returns:
-        list[Expense]: A list of Expense objects.
     """
-    return db.query(Expense).filter(Expense.user_id == user_id).all()
+    return (
+        db.query(Expense)
+        .filter(Expense.user_id == user_id)
+        .order_by(Expense.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 # ----------------------------
@@ -75,20 +59,18 @@ def get_expenses_by_user(db: Session, user_id: int) -> list[Expense]:
 def update_expense(db: Session, expense_id: int, expense_update: ExpenseUpdate) -> Expense | None:
     """
     Update an existing Expense with new data.
-
-    Args:
-        db (Session): SQLAlchemy session.
-        expense_id (int): ID of the expense to update.
-        expense_update (ExpenseUpdate): Data to update the expense with.
-
-    Returns:
-        Expense | None: The updated Expense if found, otherwise None.
     """
     db_expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not db_expense:
         return None
 
-    for field, value in expense_update.dict(exclude_unset=True).items():
+    update_data = expense_update.dict(exclude_unset=True)
+
+    # Normalize category if provided
+    if "category" in update_data and isinstance(update_data["category"], str):
+        update_data["category"] = update_data["category"].strip().lower()
+
+    for field, value in update_data.items():
         setattr(db_expense, field, value)
 
     db.commit()
@@ -102,13 +84,6 @@ def update_expense(db: Session, expense_id: int, expense_update: ExpenseUpdate) 
 def delete_expense(db: Session, expense_id: int) -> bool:
     """
     Delete an Expense by ID.
-
-    Args:
-        db (Session): SQLAlchemy session.
-        expense_id (int): ID of the expense to delete.
-
-    Returns:
-        bool: True if deleted, False if not found.
     """
     db_expense = db.query(Expense).filter(Expense.id == expense_id).first()
     if not db_expense:

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
 
@@ -8,9 +8,18 @@ class BudgetBase(BaseModel):
     Shared fields between creation, update, and response.
     """
     limit_amount: float = Field(..., example=500.0, description="Spending limit for this budget.")
-    category: Optional[str] = Field(None, example="Groceries", description="Optional category for the budget.")
-    period: Optional[str] = Field("monthly", example="monthly", description="Budgeting period (e.g., monthly, weekly).")
+    category: str = Field(..., example="Groceries", description="Category for the budget.")
+    period: str = Field(..., example="monthly", description="Budgeting period (e.g., monthly, weekly).")
     notes: Optional[str] = Field(None, example="This is my grocery budget for the month.", description="Any extra notes.")
+
+    @validator("category", "period", pre=True)
+    def normalize_fields(cls, v: str) -> str:
+        """
+        Normalize strings by trimming and lowercasing.
+        Applies to both category and period fields.
+        """
+        return v.strip().lower() if isinstance(v, str) else v
+
 
 class BudgetCreate(BudgetBase):
     """
@@ -29,6 +38,13 @@ class BudgetUpdate(BaseModel):
     category: Optional[str] = Field(None, example="Utilities")
     period: Optional[str] = Field(None, example="weekly")
     notes: Optional[str] = Field(None, example="Updated notes about the budget.")
+
+    @validator("category", "period", pre=True)
+    def normalize_optional_fields(cls, v: Optional[str]) -> Optional[str]:
+        """
+        Normalize optional string fields if they are provided.
+        """
+        return v.strip().lower() if isinstance(v, str) else v
 
 
 class BudgetOut(BudgetBase):

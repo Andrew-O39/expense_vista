@@ -6,7 +6,7 @@ These schemas define how expense data is validated and structured when:
 - sending data back to the client (output)
 """
 
-from pydantic import BaseModel, confloat
+from pydantic import BaseModel, confloat, validator
 from typing import Optional
 from datetime import datetime
 
@@ -19,8 +19,16 @@ class ExpenseBase(BaseModel):
     """
     amount: confloat(gt=0)
     description: Optional[str] = None
-    category: Optional[str] = None
+    category: str
     notes: Optional[str] = None
+
+    @validator("category", pre=True)
+    def normalize_category(cls, v: str) -> str:
+        """
+        Normalize the category by making it lowercase and trimming whitespace.
+        This helps ensure consistency when matching against budgets.
+        """
+        return v.strip().lower() if isinstance(v, str) else v
 
 
 class ExpenseCreate(ExpenseBase):
@@ -41,6 +49,13 @@ class ExpenseUpdate(BaseModel):
     category: Optional[str] = None
     notes: Optional[str] = None
 
+    @validator("category", pre=True)
+    def normalize_category(cls, v: Optional[str]) -> Optional[str]:
+        """
+        Normalize the category if provided.
+        """
+        return v.strip().lower() if isinstance(v, str) else v
+
 
 class ExpenseOut(ExpenseBase):
     """
@@ -49,7 +64,7 @@ class ExpenseOut(ExpenseBase):
     Enables compatibility with SQLAlchemy ORM objects.
     """
     id: int
-    timestamp: datetime
+    created_at: datetime
     user_id: int
 
     class Config:

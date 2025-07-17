@@ -1,32 +1,30 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from app.db.models.budget import Budget
 from app.db.models.expense import Expense
 from app.db.models.alert_log import AlertLog
 from app.utils.date_utils import get_date_range
 
-# Alert thresholds before exceeding budget
+# Alert thresholds
 HALF_LIMIT_THRESHOLD = 0.5   # 50%
 NEAR_LIMIT_THRESHOLD = 0.8   # 80%
 
 def check_budget_alerts(user_id: int, db: Session):
     """
-    Checks user's expenses against each of their budgets and triggers alerts:
-    - 50% used → 'half_limit'
-    - 80% used → 'near_limit'
-    - >100% used → 'limit_exceeded'
-    For each budget (e.g. weekly, monthly), the total expenses are compared
-    against the limit. Alerts are triggered appropriately.
-
-    Args:
-        user_id (int): The user's ID.
-        db (Session): SQLAlchemy DB session.
+    Checks user expenses against budgets and triggers alerts if usage crosses:
+    - 50%: 'half_limit'
+    - 80%: 'near_limit'
+    - >100%: 'limit_exceeded'
     """
     today = datetime.utcnow()
     budgets = db.query(Budget).filter(Budget.user_id == user_id).all()
 
     for budget in budgets:
+        if budget.period.lower() == "unknown":
+            print(f"Skipping budget with 'unknown' period (category: {budget.category})")
+            continue
+
         try:
             start_date, end_date = get_date_range(today, budget.period)
         except ValueError as e:
@@ -37,51 +35,61 @@ def check_budget_alerts(user_id: int, db: Session):
             db.query(func.sum(Expense.amount))
             .filter(
                 Expense.user_id == user_id,
-                Expense.category == budget.category,
-                Expense.timestamp >= start_date,
-                Expense.timestamp <= end_date
+                Expense.category == budget.category,  # Assumes both are normalized
+                Expense.created_at >= start_date,
+                Expense.created_at <= end_date
             )
             .scalar() or 0.0
         )
 
-        # Trigger only the highest severity alert applicable
+        # Decide which alert to trigger (highest severity only)
+        alert_type = None
         if total_spent > budget.limit_amount:
-            trigger_alert(user_id, budget, total_spent, db, alert_type="limit_exceeded")
+            alert_type = "limit_exceeded"
         elif total_spent >= NEAR_LIMIT_THRESHOLD * budget.limit_amount:
-            trigger_alert(user_id, budget, total_spent, db, alert_type="near_limit")
+            alert_type = "near_limit"
         elif total_spent >= HALF_LIMIT_THRESHOLD * budget.limit_amount:
-            trigger_alert(user_id, budget, total_spent, db, alert_type="half_limit")
+            alert_type = "half_limit"
+
+        if alert_type:
+            trigger_alert(user_id, budget, total_spent, db, alert_type)
 
 
 def trigger_alert(user_id: int, budget: Budget, spent: float, db: Session, alert_type: str):
     """
-    Logs an alert when budget usage crosses a predefined threshold.
-
-    Args:
-        user_id (int): The user's ID.
-        budget (Budget): The budget that was evaluated.
-        spent (float): The total spent in the time window.
-        db (Session): SQLAlchemy DB session.
-        alert_type (str): Either "limit_exceeded", "near_limit" or "half_limit".
+    Logs an alert (if not already triggered) for this budget cycle.
     """
+    # Prevent duplicate alert for same budget/period/type
+    existing_alert = db.query(AlertLog).filter(
+        and_(
+            AlertLog.user_id == user_id,
+            AlertLog.category == budget.category,
+            AlertLog.period == budget.period,
+            AlertLog.type == alert_type
+        )
+    ).first()
+
+    if existing_alert:
+        return  # Alert already triggered previously
+
     messages = {
         "limit_exceeded": "🚨 Budget EXCEEDED",
         "near_limit": "⚠️ Nearing budget",
         "half_limit": "📢 50% budget usage"
     }
 
-    message = messages.get(alert_type, "ℹ️ Unknown alert")
     print(
-        f"[ALERT] {message} for user {user_id}, category '{budget.category}' "
-        f"({budget.period}) → Limit: {budget.limit_amount}, Spent: {spent}"
+        f"[ALERT] {messages.get(alert_type, 'ℹ️ Alert')} for user {user_id}, "
+        f"category '{budget.category}' ({budget.period}) → "
+        f"Limit: {budget.limit_amount}, Spent: {spent}"
     )
 
-    # Save to AlertLog table
     new_alert = AlertLog(
         user_id=user_id,
         category=budget.category,
+        period=budget.period,
         type=alert_type,
-        date_sent=datetime.utcnow(),
+        notes=f"Spent {spent} of {budget.limit_amount} in {budget.period} budget for '{budget.category}'"
     )
     db.add(new_alert)
     db.commit()
