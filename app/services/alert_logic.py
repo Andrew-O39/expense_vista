@@ -5,6 +5,7 @@ from app.db.models.budget import Budget
 from app.db.models.expense import Expense
 from app.db.models.alert_log import AlertLog
 from app.utils.date_utils import get_date_range
+from app.utils.email_sender import send_alert_email
 
 # Alert thresholds
 HALF_LIMIT_THRESHOLD = 0.5   # 50%
@@ -35,7 +36,7 @@ def check_budget_alerts(user_id: int, db: Session):
             db.query(func.sum(Expense.amount))
             .filter(
                 Expense.user_id == user_id,
-                Expense.category == budget.category,  # Assumes both are normalized
+                Expense.category == budget.category,  # Both are normalized
                 Expense.created_at >= start_date,
                 Expense.created_at <= end_date
             )
@@ -89,7 +90,23 @@ def trigger_alert(user_id: int, budget: Budget, spent: float, db: Session, alert
         category=budget.category,
         period=budget.period,
         type=alert_type,
-        notes=f"Spent {spent} of {budget.limit_amount} in {budget.period} budget for '{budget.category}'"
+        notes=f"Spent {spent} of {budget.limit_amount} in your {budget.period} budget for '{budget.category}'"
     )
     db.add(new_alert)
     db.commit()
+
+    # Send email notification
+    subject = f"Budget Alert: {alert_type.replace('_', ' ').title()} for {budget.category}"
+    email_body = f"""
+            <h2>{subject}</h2>
+            <p><strong>Period:</strong> {budget.period}</p>
+            <p><strong>Limit:</strong> {budget.limit_amount}</p>
+            <p><strong>Spent:</strong> {spent}</p>
+            <p>{new_alert.notes}</p>
+        """
+
+    # Fetch user's email (assuming you can get it from the user table)
+    from app.db.models.user import User
+    user = db.query(User).filter(User.id == user_id).first()
+    if user and user.email:
+        send_alert_email(to_email=user.email, subject=subject, message=email_body)
