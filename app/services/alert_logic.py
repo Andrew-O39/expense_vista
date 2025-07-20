@@ -5,7 +5,9 @@ from app.db.models.budget import Budget
 from app.db.models.expense import Expense
 from app.db.models.alert_log import AlertLog
 from app.utils.date_utils import get_date_range
-from app.utils.email_sender import send_alert_email
+from app.utils.email_sender import send_alert_email, render_alert_email
+from app.db.models.user import User
+
 
 # Alert thresholds
 HALF_LIMIT_THRESHOLD = 0.5   # 50%
@@ -58,7 +60,7 @@ def check_budget_alerts(user_id: int, db: Session):
 
 def trigger_alert(user_id: int, budget: Budget, spent: float, db: Session, alert_type: str):
     """
-    Logs an alert (if not already triggered) for this budget cycle.
+    Logs an alert (if not already triggered) for this budget cycle and sends an email notification.
     """
     # Prevent duplicate alert for same budget/period/type
     existing_alert = db.query(AlertLog).filter(
@@ -73,40 +75,49 @@ def trigger_alert(user_id: int, budget: Budget, spent: float, db: Session, alert
     if existing_alert:
         return  # Alert already triggered previously
 
+    # Friendly alert labels
     messages = {
         "limit_exceeded": "🚨 Budget EXCEEDED",
         "near_limit": "⚠️ Nearing budget",
         "half_limit": "📢 50% budget usage"
     }
 
+    alert_message = messages.get(alert_type, "ℹ️ Budget Alert")
     print(
-        f"[ALERT] {messages.get(alert_type, 'ℹ️ Alert')} for user {user_id}, "
+        f"[ALERT] {alert_message} for user {user_id}, "
         f"category '{budget.category}' ({budget.period}) → "
         f"Limit: {budget.limit_amount}, Spent: {spent}"
     )
 
+    # Log the alert in DB
+    notes = f"Spent {spent} of {budget.limit_amount} in your {budget.period} budget for '{budget.category}'"
     new_alert = AlertLog(
         user_id=user_id,
         category=budget.category,
         period=budget.period,
         type=alert_type,
-        notes=f"Spent {spent} of {budget.limit_amount} in your {budget.period} budget for '{budget.category}'"
+        notes=notes
     )
     db.add(new_alert)
     db.commit()
 
-    # Send email notification
-    subject = f"Budget Alert: {alert_type.replace('_', ' ').title()} for {budget.category}"
-    email_body = f"""
-            <h2>{subject}</h2>
-            <p><strong>Period:</strong> {budget.period}</p>
-            <p><strong>Limit:</strong> {budget.limit_amount}</p>
-            <p><strong>Spent:</strong> {spent}</p>
-            <p>{new_alert.notes}</p>
-        """
-
-    # Fetch user's email (assuming you can get it from the user table)
-    from app.db.models.user import User
+    # Fetch user's email
     user = db.query(User).filter(User.id == user_id).first()
+
     if user and user.email:
-        send_alert_email(to_email=user.email, subject=subject, message=email_body)
+        subject = f"Budget Alert: {alert_message} - {budget.category} ({budget.period})"
+
+        html_content = render_alert_email(
+            user_name = user.username,
+            category=budget.category,
+            period=budget.period,
+            total_spent=spent,
+            limit=budget.limit_amount,
+            alert_type=alert_type
+        )
+
+        send_alert_email(
+            to_email=user.email,
+            subject=subject,
+            html_content=html_content
+        )
