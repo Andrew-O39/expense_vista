@@ -1,0 +1,12 @@
+fastapi==0.116.1
+uvicorn[standard]  # ASGI server to run FastAPI apps
+SQLAlchemy==2.0.41
+pydantic==2.11.7
+pydantic_settings==2.10.1
+python-jose==3.5.0
+passlib==1.7.4
+sendgrid==6.12.4
+Jinja2==3.1.6
+python-dateutil==2.9.0.post0
+alembic         # Database migrations
+psycopg2-binary # PostgreSQL database driver
