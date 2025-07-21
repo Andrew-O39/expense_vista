@@ -6,7 +6,8 @@
 
 - Users can register and securely log in to their accounts using JWT-based authentication.
 - Budgets can be created for different categories and tracked over specific time periods.
-- Users are able to log individual expenses and assign them to categories.
+- Users are able to log individual expenses and assign them to specific categories.
+- he application provides summaries of spending by category and time period to improve financial awareness.
 - Automated email alerts are sent when spending reaches 50% of the budget, nears the limit (80–99%), or exceeds the limit (100%+).
 - Email notifications are designed using a styled HTML template with clear and friendly formatting.
 - SendGrid integration ensures reliable delivery of notification emails.
@@ -93,7 +94,6 @@ http://localhost:8000/docs
 •Adding machine learning support for automated expense categorization.  
 •Enabling users to share budgets with family or teams.  
 •Improving mobile responsiveness for better usability on smaller screens.
-•Planned: Provide summaries of spending by category and time period to improve financial awareness.
 
 ## License
 
