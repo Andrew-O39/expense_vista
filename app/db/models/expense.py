@@ -5,7 +5,9 @@ Linked to a specific user via a foreign key.
 from app.db.base import Base
 from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
+from sqlalchemy import DateTime
+from sqlalchemy.sql import func
 
 class Expense(Base):
     __tablename__ = "expenses"
@@ -15,9 +17,14 @@ class Expense(Base):
     description = Column(String, nullable=True)
     category = Column(String, nullable=False)
     notes = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now()
+    )
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
     # Relationship back to User
     owner = relationship("User", back_populates="expenses")
 

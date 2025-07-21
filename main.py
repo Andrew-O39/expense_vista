@@ -4,7 +4,7 @@ from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel, SecurityScheme
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
 
-from app.api.routes import expense, auth, budget, alerts
+from app.api.routes import expense, auth, budget, alerts, summary
 
 
 app = FastAPI(
@@ -61,3 +61,4 @@ app.include_router(expense.router)
 app.include_router(auth.router)
 app.include_router(budget.router)
 app.include_router(alerts.router)
+app.include_router(summary.router)

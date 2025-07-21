@@ -21,6 +21,7 @@ def read_alerts(
     Retrieve a paginated list of alerts for the current authenticated user.
 
     Args:
+
         skip (int): Number of records to skip (for pagination).
         limit (int): Number of records to return (max 100).
 

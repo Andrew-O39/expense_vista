@@ -1,13 +1,12 @@
-# ExpenseTracker
+# Expense Tracker
 
-**ExpenseTracker** is a personal finance web application that allows users to create budgets, log daily expenses, and receive email alerts when their spending approaches or exceeds their set limits. The application is designed to help users stay in control of their finances through proactive and timely notifications.
+**Expense Tracker** is a personal finance web application that allows users to create budgets, log daily expenses, and receive email alerts when their spending approaches or exceeds their set limits. The application is designed to help users stay in control of their finances through proactive and timely notifications.
 
 ## Features
 
 - Users can register and securely log in to their accounts using JWT-based authentication.
 - Budgets can be created for different categories and tracked over specific time periods.
 - Users are able to log individual expenses and assign them to categories.
-- The application provides summaries of spending by category and time period to improve financial awareness.
 - Automated email alerts are sent when spending reaches 50% of the budget, nears the limit (80–99%), or exceeds the limit (100%+).
 - Email notifications are designed using a styled HTML template with clear and friendly formatting.
 - SendGrid integration ensures reliable delivery of notification emails.
@@ -42,13 +41,20 @@ To run this project locally, follow the steps below:
     ```
    pip install -r requirements.txt
    ```
-4.	Configure environment variables  
-Create a .env file in the root directory with the following keys:
+4.	**Configure environment variables**  
+    Create a .env file in the root directory with the following keys:
    ```
-SENDGRID_API_KEY=your_sendgrid_api_key
-EMAIL_FROM=your_verified_sender@example.com
+# Security settings
+SECRET_KEY=your-secret-key
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Database
 DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/expense_tracker_db
-SECRET_KEY=your_secret_key
+
+# Email (SendGrid)
+MAIL_FROM=your-email@example.com
+SENDGRID_API_KEY=your-sendgrid-api-key
    ```
 5. **Run database migration**
      ```
@@ -86,7 +92,8 @@ http://localhost:8000/docs
 •Building a web-based dashboard with visual analytics and charts.  
 •Adding machine learning support for automated expense categorization.  
 •Enabling users to share budgets with family or teams.  
-•Improving mobile responsiveness for better usability on smaller screens.  
+•Improving mobile responsiveness for better usability on smaller screens.
+•Planned: Provide summaries of spending by category and time period to improve financial awareness.
 
 ## License
 
