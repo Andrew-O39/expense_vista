@@ -1,15 +1,30 @@
 """
-Represents a single expense entry.
-Linked to a specific user via a foreign key.
+SQLAlchemy model definition for user expenses.
+
+Each Expense represents a single transaction recorded by a user,
+with fields for amount, category, description, and optional notes.
 """
-from app.db.base import Base
-from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
+
 from datetime import datetime, timezone
-from sqlalchemy import DateTime
-from sqlalchemy.sql import func
+from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey, func
+from sqlalchemy.orm import relationship
+from app.db.base import Base
+
 
 class Expense(Base):
+    """
+    Expense model representing individual spending records.
+
+    Attributes:
+        id (int): Primary key.
+        amount (float): Amount spent.
+        description (str): Optional description of the expense.
+        category (str): Category of the expense (e.g., 'food', 'transport').
+        notes (str): Optional notes for this entry.
+        created_at (datetime): Timestamp when the expense was created.
+        user_id (int): Foreign key to the User table.
+        owner (User): Relationship to the owning user.
+    """
     __tablename__ = "expenses"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -25,8 +40,10 @@ class Expense(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    # Relationship back to User
     owner = relationship("User", back_populates="expenses")
 
     def __repr__(self):
-        return f"<Expense(amount={self.amount}, category={self.category})>"
+        return (
+            f"<Expense(amount={self.amount}, "
+            f"category='{self.category}')>"
+        )

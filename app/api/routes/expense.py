@@ -1,13 +1,13 @@
 """
 API routes for managing expenses.
 
-These endpoints allow users to:
-- create a new expense
-- retrieve one or all of their expenses
-- update or delete an expense
+These endpoints allow authenticated users to:
+- Create a new expense
+- Retrieve their expenses (individually or in a list)
+- Update or delete an expense
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -16,13 +16,10 @@ from app.db.session import get_db
 from app.crud import expense as crud_expense
 from app.api.deps import get_current_user
 from app.db.models.user import User
-from app.services.alert_logic import check_budget_alerts
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
 
-# -----------------------------
-# Create a new expense
-# -----------------------------
+
 @router.post("/", response_model=ExpenseOut, status_code=status.HTTP_201_CREATED)
 def create_expense(
     expense: ExpenseCreate,
@@ -30,29 +27,25 @@ def create_expense(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new expense record for the authenticated user.
-    Requires amount, category, and optional description. Returns the created expense.
+    Create a new expense.
+
+    The expense will be associated with the currently authenticated user.
+    Requires an amount, category, and optionally a description.
     """
     return crud_expense.create_expense(db=db, expense_create=expense, user_id=current_user.id)
 
-# -----------------------------
-# Get all expenses for user
-# -----------------------------
+
 @router.get("/", response_model=List[ExpenseOut])
 def read_expenses_by_user(
-    skip: int = 0,
-    limit: int = 10,
+    skip: int = Query(0, ge=0, description="Number of records to skip (for pagination)"),
+    limit: int = Query(10, le=100, description="Maximum number of records to return"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve a list of all expenses for the currently authenticated user.
+    Retrieve a list of all expenses for the current user.
 
-    Pagination:
-    - `skip`: Number of records to skip (for pagination)
-    - `limit`: Maximum number of records to return
-
-    Example: `/expenses/?skip=10&limit=5`
+    Supports pagination using `skip` and `limit` query parameters.
     """
     return crud_expense.get_expenses_by_user(
         db=db,
@@ -61,9 +54,7 @@ def read_expenses_by_user(
         limit=limit
     )
 
-# -----------------------------
-# Get a specific expense
-# -----------------------------
+
 @router.get("/{expense_id}", response_model=ExpenseOut)
 def read_expense(
     expense_id: int,
@@ -71,26 +62,22 @@ def read_expense(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve a single expense by its ID for the current user.
+    Retrieve a specific expense by its ID.
 
-    Returns:
-        - 200 OK with expense data if found and owned by the user
-        - 404 Not Found if the expense doesn't exist or doesn't belong to the user
+    Only accessible if the expense belongs to the current user.
+    Returns 404 if not found and 403 if access is denied.
     """
     db_expense = crud_expense.get_expense(db, expense_id=expense_id)
 
     if not db_expense:
         raise HTTPException(status_code=404, detail="Expense not found")
 
-    # Only allow access to the owner's data
     if db_expense.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to view this expense")
 
     return db_expense
 
-# -----------------------------
-# Update an expense
-# -----------------------------
+
 @router.put("/{expense_id}", response_model=ExpenseOut)
 def update_expense(
     expense_id: int,
@@ -99,12 +86,12 @@ def update_expense(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Update an existing expense by its ID, if it belongs to the user.
+    Update an existing expense by ID.
 
-    Returns 404 if not found or not owned by the user.
+    Only the owner can update the expense. Returns:
+    - 404 if the expense is not found
+    - 403 if the user does not own the expense
     """
-
-    # Verify ownership before updating
     db_expense = crud_expense.get_expense(db, expense_id)
     if not db_expense:
         raise HTTPException(status_code=404, detail="Expense not found")
@@ -113,9 +100,7 @@ def update_expense(
 
     return crud_expense.update_expense(db=db, expense_id=expense_id, expense_update=expense)
 
-# -----------------------------
-# Delete an expense
-# -----------------------------
+
 @router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_expense(
     expense_id: int,
@@ -123,11 +108,12 @@ def delete_expense(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Delete an expense by its ID, if it belongs to the user.
+    Delete an expense by its ID.
 
-    Returns:
-        - 204 No Content if successful
-        - 404 Not Found if the expense doesn't exist or isn't owned by the user
+    Only the owner of the expense can delete it. Returns:
+    - 204 No Content on success
+    - 404 if the expense is not found
+    - 403 if the user does not own the expense
     """
     db_expense = crud_expense.get_expense(db, expense_id)
     if not db_expense:

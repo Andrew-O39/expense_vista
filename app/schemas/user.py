@@ -1,8 +1,9 @@
 """
-Pydantic schemas for the User model
+Pydantic schemas for the User model.
+
 These schemas define how user data is validated and serialized:
--when received from the client (e.g., during registration or login)
--when returned to the client (excluding sensitive data like passwords)
+- When received from the client (e.g., during registration or login)
+- When returned to the client (excluding sensitive data like passwords)
 """
 
 from pydantic import BaseModel, EmailStr, Field
@@ -13,10 +14,10 @@ from typing import Optional
 # ------------------------------
 class UserBase(BaseModel):
     """
-    Shared fields for reading and writing user data
+    Shared fields for reading and writing user data.
     """
-    username: str = Field(..., examples=["andrew_owusu"])
-    email: EmailStr = Field(..., examples=["andrew@example.com"])
+    username: str = Field(..., description="Unique username for the user", examples=["andrew_owusu"])
+    email: EmailStr = Field(..., description="User's email address", examples=["andrew@example.com"])
 
 
 # ------------------------------
@@ -25,9 +26,9 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """
     Schema used when a new user is registering.
-    Requires a plain.text password.
+    Requires a plain-text password.
     """
-    password: str = Field(..., min_length=6, examples=["password123"])
+    password: str = Field(..., min_length=6, description="Password with minimum 6 characters", examples=["password123"])
 
 
 # ------------------------------
@@ -35,10 +36,10 @@ class UserCreate(UserBase):
 # ------------------------------
 class UserLogin(BaseModel):
     """
-    Schema used during user login
+    Schema used during user login.
     """
-    username: str
-    password: str
+    username: str = Field(..., description="Your username", examples=["andrew_owusu"])
+    password: str = Field(..., description="Your password", examples=["password123"])
 
 
 # ------------------------------
@@ -49,10 +50,10 @@ class UserOut(UserBase):
     Schema returned to the client after user registration or authentication.
     Excludes sensitive fields like hashed_password.
     """
-    id: int
+    id: int = Field(..., description="User ID")
 
     class Config:
-        orm_mode = True # Enables conversion from SQLAlchemy model to Pydantic model
+        orm_mode = True
 
 
 # ------------------------------

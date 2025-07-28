@@ -5,26 +5,27 @@ from typing import Tuple
 
 def get_date_range(today: datetime, period: str) -> Tuple[datetime, datetime]:
     """
-    Returns the start and end date for a given period.
-    Supported periods: 'weekly', 'monthly', 'yearly'
+    Return the UTC start and end datetime for a given period.
+
+    Supported values for `period`: 'weekly', 'monthly', 'yearly'.
     """
-    period = period.lower().strip()
-    today = today.astimezone(timezone.utc)  # Convert to UTC
+    period = period.strip().lower()
+    today = today.astimezone(timezone.utc)
 
     if period == "weekly":
-        start = today - timedelta(days=today.weekday())  # Monday
-        end = start + timedelta(days=6)
+        start_date = today - timedelta(days=today.weekday())  # Monday
+        end_date = start_date + timedelta(days=6)
     elif period == "monthly":
-        start = today.replace(day=1)
-        end = (start + relativedelta(months=1)) - timedelta(days=1)
+        start_date = today.replace(day=1)
+        end_date = (start_date + relativedelta(months=1)) - timedelta(days=1)
     elif period == "yearly":
-        start = today.replace(month=1, day=1)
-        end = today.replace(month=12, day=31)
+        start_date = today.replace(month=1, day=1)
+        end_date = today.replace(month=12, day=31)
     else:
-        raise ValueError(f"Unknown period type: '{period}'")
+        raise ValueError(f"Invalid period '{period}'. Use: 'weekly', 'monthly', or 'yearly'.")
 
-    # Set both to UTC midnight to prevent time mismatches
-    start = datetime.combine(start.date(), datetime.min.time(), tzinfo=timezone.utc)
-    end = datetime.combine(end.date(), datetime.max.time(), tzinfo=timezone.utc)
+    # Normalize both to UTC start/end of day
+    start_utc = datetime.combine(start_date.date(), datetime.min.time(), tzinfo=timezone.utc)
+    end_utc = datetime.combine(end_date.date(), datetime.max.time(), tzinfo=timezone.utc)
 
-    return start, end
+    return start_utc, end_utc

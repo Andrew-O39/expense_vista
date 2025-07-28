@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -18,24 +18,24 @@ def create_budget(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new budget for the authenticated user.
+    Create a new budget.
+
+    The budget will be associated with the currently authenticated user.
     """
     return crud_budget.create_budget(db=db, budget_data=budget, user_id=current_user.id)
 
 
 @router.get("/", response_model=List[BudgetOut])
 def get_user_budgets(
-    skip: int = 0,
-    limit: int = 10,
+    skip: int = Query(0, ge=0, description="Number of budgets to skip (for pagination)"),
+    limit: int = Query(10, le=100, description="Maximum number of budgets to return"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve a paginated list of budgets belonging to the authenticated user.
+    Retrieve all budgets belonging to the current user.
 
-    Pagination:
-    - `skip`: Number of budgets to skip (default 0)
-    - `limit`: Maximum number of budgets to return (default 10)
+    Supports pagination via `skip` and `limit` query parameters.
     """
     return crud_budget.get_user_budgets(
         db=db,
@@ -52,7 +52,9 @@ def get_budget_by_id(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve a specific budget by its ID (only if it belongs to the user).
+    Retrieve a single budget by its ID.
+
+    The budget must belong to the current user.
     """
     budget = crud_budget.get_budget_by_id(db, budget_id=budget_id, user_id=current_user.id)
     if not budget:
@@ -68,7 +70,9 @@ def update_budget(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Update an existing budget (only if it belongs to the user).
+    Update an existing budget by ID.
+
+    The budget must belong to the current user.
     """
     db_budget = crud_budget.get_budget_by_id(db, budget_id=budget_id, user_id=current_user.id)
     if not db_budget:
@@ -83,10 +87,11 @@ def delete_budget(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Delete a budget (only if it belongs to the user).
+    Delete a budget by ID.
+
+    Only budgets belonging to the current user can be deleted.
     """
     db_budget = crud_budget.get_budget_by_id(db, budget_id=budget_id, user_id=current_user.id)
     if not db_budget:
         raise HTTPException(status_code=404, detail="Budget not found")
     crud_budget.delete_budget(db, db_budget=db_budget)
-    return

@@ -8,25 +8,20 @@ from app.db.models.user import User
 from app.schemas.alert_log import AlertLogSchema
 from app.api.deps import get_current_user
 
-router = APIRouter(prefix="", tags=["Alerts"])
+router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
-@router.get("/alerts/", response_model=List[AlertLogSchema])
+
+@router.get("/", response_model=List[AlertLogSchema])
 def read_alerts(
-    skip: int = Query(0, ge=0, description="Number of alerts to skip"),
-    limit: int = Query(20, le=100, description="Maximum number of alerts to return"),
+    skip: int = Query(0, ge=0, description="Number of alerts to skip (for pagination)"),
+    limit: int = Query(20, le=100, description="Max number of alerts to return (max 100)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Retrieve a paginated list of alerts for the current authenticated user.
+    Get a list of budget alert logs for the authenticated user, sorted by most recent.
 
-    Args:
-
-        skip (int): Number of records to skip (for pagination).
-        limit (int): Number of records to return (max 100).
-
-    Returns:
-        List[AlertLogSchema]: A paginated list of user's alerts.
+    This endpoint supports pagination using `skip` and `limit`.
     """
     alerts = (
         db.query(AlertLog)

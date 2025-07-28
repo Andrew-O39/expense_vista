@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
-from typing import Optional, Dict
+from sqlalchemy import func
+from typing import Optional, Dict, Union
 from datetime import datetime
 
 from app.db.models.expense import Expense
@@ -7,27 +8,25 @@ from app.utils.date_utils import get_date_range
 
 
 def get_spending_summary(
-        db: Session,
-        user_id: int,
-        period: str,
-        category: Optional[str] = None
-) -> Dict:
+    db: Session,
+    user_id: int,
+    period: str,
+    category: Optional[str] = None
+) -> Dict[str, Union[str, float, Dict[str, float]]]:
     """
-    Returns a summary of spending for a user during a given period.
+    Get total spending for a user in a given period.
 
-    If a category is provided, returns total spent in that category.
-    If no category is provided, returns a breakdown of all categories.
+    - With a category: returns {"category", "total_spent", "period"}
+    - Without a category: returns {"period", "summary": {category: amount}}
 
     Args:
-        db (Session): SQLAlchemy database session
-        user_id (int): ID of the user
-        period (str): 'weekly', 'monthly', or 'yearly'
-        category (Optional[str]): Optional category to filter by
+        db: Database session
+        user_id: ID of the user
+        period: 'weekly', 'monthly', or 'yearly'
+        category: Optional category filter
 
     Returns:
-        dict: A summary dictionary. Example:
-              - Single category: {"category": "Food", "total_spent": 120.0, "period": "monthly"}
-              - All categories: {"period": "monthly", "summary": {"Food": 120.0, "Transport": 45.0}}
+        dict: Spending summary
     """
     today = datetime.utcnow()
     start_date, end_date = get_date_range(today, period)
@@ -39,20 +38,37 @@ def get_spending_summary(
     )
 
     if category:
-        query = query.filter(Expense.category == category)
-        total = sum(exp.amount for exp in query.all())
+        normalized_category = category.strip().lower()
+        total = (
+            db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+            .filter(
+                Expense.user_id == user_id,
+                Expense.category == normalized_category,
+                Expense.created_at >= start_date,
+                Expense.created_at <= end_date
+            )
+            .scalar()
+        )
         return {
-            "category": category,
+            "category": normalized_category,
             "total_spent": round(total, 2),
             "period": period
         }
+
     else:
-        summary = {}
-        expenses = query.all()
-        for exp in expenses:
-            summary.setdefault(exp.category, 0.0)
-            summary[exp.category] += exp.amount
+        results = (
+            db.query(Expense.category, func.coalesce(func.sum(Expense.amount), 0.0))
+            .filter(
+                Expense.user_id == user_id,
+                Expense.created_at >= start_date,
+                Expense.created_at <= end_date
+            )
+            .group_by(Expense.category)
+            .all()
+        )
+
+        summary = {category: round(amount, 2) for category, amount in results}
         return {
             "period": period,
-            "summary": {cat: round(amount, 2) for cat, amount in summary.items()}
+            "summary": summary
         }

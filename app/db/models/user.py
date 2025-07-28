@@ -1,28 +1,29 @@
 """
 SQLAlchemy model definition for the User entity.
 
-This model represents registered users in the expense tracking application.
-Each user can own multiple expenses and budgets, managed through defined relationships.
+Represents registered users in the expense tracking application.
+Each user can have multiple expenses, budgets, and alert logs.
 """
-from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, DateTime
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, DateTime, func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from sqlalchemy import DateTime
-from sqlalchemy.sql import func
+
 
 class User(Base):
     """
     User model representing application users.
 
     Attributes:
-        id (int): Primary key, unique identifier for each user.
-        username (str): Unique username used for login or identification.
-        email (str): Unique email address associated with the user.
-        hashed_password (str): Securely stored (hashed) password.
-        expenses (List[Expense]): One-to-many relationship to Expense records.
-        budgets (List[Budget]): One-to-many relationship to Budget records.
+        id (int): Primary key.
+        username (str): Unique username.
+        email (str): Unique email address.
+        hashed_password (str): Securely hashed password.
+        created_at (datetime): Timestamp of account creation.
+        expenses: One-to-many relationship to expenses.
+        budgets: One-to-many relationship to budgets.
+        alert_logs: One-to-many relationship to alert logs.
     """
     __tablename__ = "users"
 
@@ -30,7 +31,8 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True),
+    created_at = Column(
+        DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now()
     )

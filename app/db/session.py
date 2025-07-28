@@ -13,13 +13,16 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Dependency to provide a database session
 def get_db() -> Session:
+    """
+    Provides a transactional scope around a series of operations.
+    """
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-# Create tables for local testing
+# Create tables locally for testing or initial setup
 if __name__ == "__main__":
     print("Creating tables...")
     Base.metadata.create_all(bind=engine)

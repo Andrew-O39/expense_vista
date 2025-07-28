@@ -8,15 +8,15 @@ class BudgetBase(BaseModel):
     Shared fields between creation, update, and response.
     """
     limit_amount: float = Field(..., example=500.0, description="Spending limit for this budget.")
-    category: str = Field(..., example="Groceries", description="Category for the budget.")
+    category: str = Field(..., example="Groceries", description="Category name for the budget.")
     period: str = Field(..., example="monthly", description="Budgeting period (e.g., monthly, weekly).")
-    notes: Optional[str] = Field(None, example="This is my grocery budget for the month.", description="Any extra notes.")
+    notes: Optional[str] = Field(None, example="This is my grocery budget for the month.", description="Optional notes about the budget.")
 
     @validator("category", "period", pre=True)
     def normalize_fields(cls, v: str) -> str:
         """
-        Normalize strings by trimming and lowercasing.
-        Applies to both category and period fields.
+        Normalize strings by trimming whitespace and lowercasing.
+        Applies to 'category' and 'period'.
         """
         return v.strip().lower() if isinstance(v, str) else v
 
@@ -24,25 +24,25 @@ class BudgetBase(BaseModel):
 class BudgetCreate(BudgetBase):
     """
     Fields required to create a new budget.
-    Inherits from BudgetBase.
+    Inherits all fields from BudgetBase.
     """
     pass
 
 
 class BudgetUpdate(BaseModel):
     """
-    Fields that can be updated on an existing budget.
+    Fields that can be updated in an existing budget.
     All fields are optional.
     """
     limit_amount: Optional[float] = Field(None, example=600.0, description="Updated spending limit.")
-    category: Optional[str] = Field(None, example="Utilities")
-    period: Optional[str] = Field(None, example="weekly")
-    notes: Optional[str] = Field(None, example="Updated notes about the budget.")
+    category: Optional[str] = Field(None, example="Utilities", description="Updated category name.")
+    period: Optional[str] = Field(None, example="weekly", description="Updated budgeting period.")
+    notes: Optional[str] = Field(None, example="Updated notes about the budget.", description="Optional notes update.")
 
     @validator("category", "period", pre=True)
     def normalize_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         """
-        Normalize optional string fields if they are provided.
+        Normalize optional string fields if provided.
         """
         return v.strip().lower() if isinstance(v, str) else v
 
@@ -50,12 +50,12 @@ class BudgetUpdate(BaseModel):
 class BudgetOut(BudgetBase):
     """
     Response model for returning a budget to the client.
-    Includes database-specific and relational fields.
+    Includes metadata fields.
     """
-    id: int
-    user_id: int
-    created_at: datetime
-    updated_at: datetime
+    id: int = Field(..., description="Unique ID of the budget.")
+    user_id: int = Field(..., description="ID of the user who owns the budget.")
+    created_at: datetime = Field(..., description="Timestamp when the budget was created.")
+    updated_at: datetime = Field(..., description="Timestamp of the last update.")
 
     class Config:
-        orm_mode = True  # Allows compatibility with ORM objects
+        orm_mode = True  # Enables ORM -> Pydantic conversion
