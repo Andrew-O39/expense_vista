@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Import settings and Base
 from app.core.config import settings
-from app.db.models.base import Base  # Make sure all models are imported in app.db.base
+from app.db.base import Base  # Make sure all models are imported in app.db.base
 from app.db.session import engine
 
 # Alembic Config object
