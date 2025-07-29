@@ -12,3 +12,4 @@ alembic         # Database migrations
 psycopg2-binary # PostgreSQL database driver
 email-validator
 python-multipart
+bcrypt
