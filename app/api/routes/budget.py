@@ -27,6 +27,8 @@ def create_budget(
 
 @router.get("/", response_model=List[BudgetOut])
 def get_user_budgets(
+    period: str | None = Query(None, description="Filter budgets by period (e.g., weekly, monthly, yearly)"),
+    category: str | None = Query(None, description="Filter budgets by category"),
     skip: int = Query(0, ge=0, description="Number of budgets to skip (for pagination)"),
     limit: int = Query(10, le=100, description="Maximum number of budgets to return"),
     db: Session = Depends(get_db),
@@ -35,11 +37,13 @@ def get_user_budgets(
     """
     Retrieve all budgets belonging to the current user.
 
-    Supports pagination via `skip` and `limit` query parameters.
+    Supports optional filtering by period, category, and pagination.
     """
     return crud_budget.get_user_budgets(
         db=db,
         user_id=current_user.id,
+        period=period,
+        category=category,
         skip=skip,
         limit=limit
     )

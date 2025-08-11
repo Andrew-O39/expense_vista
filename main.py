@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel, SecuritySchemeType
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
-
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import expense, auth, budget, alerts, summary
 
 # -------------------------------
@@ -46,7 +46,21 @@ app = FastAPI(
     title="Expense Tracker API",
     description="A simple API to manage personal expenses.",
     version="1.0.0",
-    openapi_tags=tags_metadata  # 👈 Add tag metadata here
+    openapi_tags=tags_metadata  # Add tag metadata
+)
+
+# Allow CORS from React frontend
+origins = [
+    "http://localhost:5173",  # Vite dev server
+    "http://127.0.0.1:5173",  # sometimes browsers use this
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,        # or ["*"] for all
+    allow_credentials=True,
+    allow_methods=["*"],          # GET, POST, PUT, DELETE, OPTIONS
+    allow_headers=["*"],          # Authorization, Content-Type, etc.
 )
 
 # OAuth2 Bearer schema

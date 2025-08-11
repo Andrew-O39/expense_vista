@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from fastapi import HTTPException
 
 from app.db.models.budget import Budget
 from app.schemas.budget import BudgetCreate, BudgetUpdate
 
+ALLOWED_PERIODS = {'weekly', 'monthly', 'yearly'}
 
 def create_budget(db: Session, budget_data: BudgetCreate, user_id: int) -> Budget:
     """
@@ -20,17 +22,30 @@ def create_budget(db: Session, budget_data: BudgetCreate, user_id: int) -> Budge
     return db_budget
 
 
-def get_user_budgets(db: Session, user_id: int, skip: int = 0, limit: int = 10) -> List[Budget]:
+def get_user_budgets(
+        db: Session,
+        user_id: int,
+        period: Optional[str] = None,
+        category: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 10
+) -> List[Budget]:
     """
-    Retrieve budgets for a user with pagination.
+    Retrieve budgets for a user with optional normalized period and category filter and pagination.
     """
-    return (
-        db.query(Budget)
-        .filter(Budget.user_id == user_id)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    query = db.query(Budget).filter(Budget.user_id == user_id)
+
+    if period:
+        normalized_period = period.strip().lower()
+        if normalized_period not in ALLOWED_PERIODS:
+            raise HTTPException(status_code=400, detail="Invalid period value")
+        query = query.filter(Budget.period == normalized_period)
+
+    if category:
+        normalized_category = category.strip().lower()
+        query = query.filter(Budget.category == normalized_category)
+
+    return query.offset(skip).limit(limit).all()
 
 
 def get_budget_by_id(db: Session, budget_id: int, user_id: int) -> Optional[Budget]:
