@@ -43,8 +43,8 @@ tags_metadata = [
 # FastAPI app
 # -------------------------------
 app = FastAPI(
-    title="Expense Tracker API",
-    description="A simple API to manage personal expenses.",
+    title="ExpenseVista",
+    description="A simple app to manage your spending and budgets.",
     version="1.0.0",
     openapi_tags=tags_metadata  # Add tag metadata
 )

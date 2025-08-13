@@ -15,7 +15,7 @@ from app.db.models.expense import Expense
 router = APIRouter(prefix="/summary", tags=["Summary"])
 
 
-@router.get("/summary", response_model=Union[SingleCategorySummary, MultiCategorySummary])
+@router.get("/", response_model=Union[SingleCategorySummary, MultiCategorySummary])
 def get_spending_summary(
     period: str = Query(..., description="Time period to summarize ('weekly', 'monthly', or 'yearly')"),
     category: Optional[str] = Query(None, description="Optional category to filter by"),
