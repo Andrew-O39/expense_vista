@@ -40,6 +40,7 @@ class User(Base):
     expenses = relationship("Expense", back_populates="owner", cascade="all, delete")
     budgets = relationship("Budget", back_populates="owner", cascade="all, delete")
     alert_logs = relationship("AlertLog", back_populates="user")
+    incomes = relationship("Income", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(username={self.username}, email={self.email})>"

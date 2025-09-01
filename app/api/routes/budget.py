@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 
 from app.schemas.budget import BudgetCreate, BudgetUpdate, BudgetOut
 from app.db.session import get_db
@@ -18,32 +19,48 @@ def create_budget(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new budget.
+    Create a new budget for the authenticated user.
 
-    The budget will be associated with the currently authenticated user.
+    Supported periods:
+    - `weekly`
+    - `monthly`
+    - `quarterly`
+    - `half-yearly`
+    - `yearly`
+
+    Each budget is tied to a specific category and time period.
     """
     return crud_budget.create_budget(db=db, budget_data=budget, user_id=current_user.id)
 
 
 @router.get("/", response_model=List[BudgetOut])
 def get_user_budgets(
-    period: str | None = Query(None, description="Filter budgets by period (e.g., weekly, monthly, yearly)"),
+    period: str | None = Query(None, description="Filter budgets by period (e.g., weekly, monthly, quarterly, half-yearly, yearly)"),
     category: str | None = Query(None, description="Filter budgets by category"),
+    search: str | None = Query(None, description="Search term to filter by category or notes"),
     skip: int = Query(0, ge=0, description="Number of budgets to skip (for pagination)"),
+    start_date: Optional[datetime] = Query(None, description="Filter by created_at start (ISO)"),
+    end_date: Optional[datetime] = Query(None, description="Filter by created_at end (ISO)"),
     limit: int = Query(10, le=100, description="Maximum number of budgets to return"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve all budgets belonging to the current user.
+    Retrieve budgets belonging to the current user.
 
-    Supports optional filtering by period, category, and pagination.
+    Supports:
+    - Optional filtering by period and category
+    - Full-text search on category and notes
+    - Pagination using `skip` and `limit`
     """
     return crud_budget.get_user_budgets(
         db=db,
         user_id=current_user.id,
         period=period,
         category=category,
+        search=search,
+        start_date=start_date,
+        end_date=end_date,
         skip=skip,
         limit=limit
     )

@@ -3,7 +3,7 @@ from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel, SecurityScheme
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import expense, auth, budget, alerts, summary
+from app.api.routes import expense, auth, budget, alerts, summary, income
 
 # -------------------------------
 # Tag metadata for Swagger UI
@@ -22,12 +22,21 @@ tags_metadata = [
         "description": "Add, update, view, and delete user expenses."
     },
     {
+        "name": "Incomes",
+        "description": "Record and manage income sources such as salary, freelance work, or investments."
+    },
+    {
         "name": "Alerts",
         "description": "Notifications triggered when budget thresholds are met or exceeded."
     },
     {
         "name": "Summary",
-        "description": "Get statistical summaries of your spending habits."
+        "description": (
+            "Endpoints for analyzing financial activity.\n\n"
+            "- **`/summary/`** → Get statistical summaries of your spending habits (by period and category).\n"
+            "- **`/summary/overview`** → Get an overview of both income and expenses, including net balance.\n"
+            "   - Supports snapshots or grouped results (`monthly`, `quarterly`, `yearly`) for trend analysis."
+        )
     },
     {
         "name": "Health Check",
@@ -113,5 +122,6 @@ def health_check():
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(budget.router, tags=["Budgets"])
 app.include_router(expense.router, tags=["Expenses"])
+app.include_router(income.router, tags=["Incomes"])
 app.include_router(alerts.router, tags=["Alerts"])
 app.include_router(summary.router, tags=["Summary"])

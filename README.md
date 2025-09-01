@@ -1,13 +1,15 @@
-# Expense Tracker
+# ExpenseVista
 
-**Expense Tracker** is a personal finance web application that allows users to create budgets, log daily expenses, and receive email alerts when their spending approaches or exceeds their set limits. The application is designed to help users stay in control of their finances through proactive and timely notifications.
+**ExpenseVista** is a personal finance web application that allows users to create budgets, log daily expenses, track incomes, and receive email alerts when their spending approaches or exceeds their set limits. The application is designed to help users stay in control of their finances through proactive and timely notifications.
 
 ## Features
 
 - Users can register and securely log in to their accounts using JWT-based authentication.
 - Budgets can be created for different categories and tracked over specific time periods.
 - Users are able to log individual expenses and assign them to specific categories.
-- he application provides summaries of spending by category and time period to improve financial awareness.
+- **Income tracking:** record income entries (salary, freelance, investments, etc.), categorized as active or passive.
+- The application provides summaries of both spending and income by category and time period.
+- **Financial overview dashboard:** shows total income, total expenses, and net balance, with breakdowns over time.
 - Automated email alerts are sent when spending reaches 50% of the budget, nears the limit (80–99%), or exceeds the limit (100%+).
 - Email notifications are designed using a styled HTML template with clear and friendly formatting.
 - SendGrid integration ensures reliable delivery of notification emails.
@@ -22,6 +24,7 @@
 - **Authentication:** OAuth2 with JWT Tokens
 - **Data Validation:** Pydantic
 - **Migrations:** Alembic
+- **Income & Finance Tracking:** Added support for income records and net balance calculations
 
 ## Getting Started
 
@@ -30,8 +33,8 @@ To run this project locally, follow the steps below:
 1. **Clone the repository**
 
    ```
-   git clone https://github.com/Andrew-O39/expense_tracker.git
-   cd expense_tracker
+   git clone https://github.com/Andrew-O39/expense_vista.git
+   cd expense_vista
    ```
 2. **Create and activate a virtual environment**
      ```
@@ -71,7 +74,7 @@ http://localhost:8000/docs
 
 ## Project Structure
 ```
- expense_tracker/
+ expense_vista/
 ├── app/
 │   ├── api/              # API route definitions
 │   ├── core/             # Core configurations and settings
@@ -94,6 +97,8 @@ http://localhost:8000/docs
 •Adding machine learning support for automated expense categorization.  
 •Enabling users to share budgets with family or teams.  
 •Improving mobile responsiveness for better usability on smaller screens.
+•Savings tracking: automatically calculate potential savings (Income – Expenses – Budgets).
+•Advanced reporting: quarterly and half-yearly summaries.
 
 ## License
 

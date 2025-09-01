@@ -8,8 +8,9 @@ These endpoints allow authenticated users to:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from datetime import datetime
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app.schemas.expense import ExpenseOut, ExpenseCreate, ExpenseUpdate
 from app.db.session import get_db
@@ -39,19 +40,25 @@ def create_expense(
 def read_expenses_by_user(
     skip: int = Query(0, ge=0, description="Number of records to skip (for pagination)"),
     limit: int = Query(10, le=100, description="Maximum number of records to return"),
+    start_date: Optional[datetime] = Query(None, description="Filter by created_at start (ISO)"),
+    end_date: Optional[datetime] = Query(None, description="Filter by created_at end (ISO)"),
+    search: Optional[str] = Query(None, description="Search term to filter expenses"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Retrieve a list of all expenses for the current user.
-
-    Supports pagination using `skip` and `limit` query parameters.
+    Supports pagination with `skip` & `limit`.
+    Supports searching across category, description, and notes.
     """
     return crud_expense.get_expenses_by_user(
         db=db,
         user_id=current_user.id,
         skip=skip,
-        limit=limit
+        limit=limit,
+        start_date=start_date,
+        end_date=end_date,
+        search=search
     )
 
 

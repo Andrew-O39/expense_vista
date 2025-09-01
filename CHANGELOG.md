@@ -10,7 +10,30 @@ and this project does not yet follow semantic versioning (still in development).
 ### Added
 - (pending...)
 
----
+## [1.1.0] – Extended Personal Finance Features
+
+- **Income tracking system**:
+  - Introduced new `incomes` table with support for amount, source, category, notes, and timestamps.
+  - CRUD operations for income entries (create, read, update, delete).
+  - API routes under `/incomes` with pagination and optional filtering for listing incomes.
+- **Financial overview (/summary/overview)**:
+  - Now returns both total income and total expenses.
+  - Calculates **total income**, **total expenses** and **net balance** (income – expenses).
+  - Supports different period options (weekly, monthly, yearly) with optional grouping extensions in progress to compare trends.
+- **Grouped overview (/summary/overview)**:
+  - Added optional group_by parameter to /summary/overview.
+  - Supports grouped financial snapshots:\
+  •GET /summary/overview?period=monthly&group_by=weekly\
+  •GET /summary/overview?period=yearly&group_by=quarterly\
+  •And more (weekly, monthly, quarterly, half-yearly).
+- **Swagger UI documentation** for new Income endpoints and updated overview route.
+
+### Improved
+- Consistent timestamp handling across all models (UTC-aware).
+- Unified normalization for text fields (`source`, `category`) across schemas and CRUD.
+- Tags metadata consistency to avoid duplicate groups in Swagger.
+- Enhanced testability of financial metrics (verified expense vs. income calculations).
+
 
 ## [1.0.0] – First production release
 

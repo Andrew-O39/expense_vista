@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
 
+ALLOWED_PERIODS = {"weekly", "monthly", "yearly", "quarterly", "half-yearly"}
 
 class BudgetBase(BaseModel):
     """
@@ -9,16 +10,20 @@ class BudgetBase(BaseModel):
     """
     limit_amount: float = Field(..., example=500.0, description="Spending limit for this budget.")
     category: str = Field(..., example="Groceries", description="Category name for the budget.")
-    period: str = Field(..., example="monthly", description="Budgeting period (e.g., monthly, weekly).")
+    period: str = Field(..., example="monthly", description="Period: weekly, monthly, yearly, quarterly, half-yearly.")
     notes: Optional[str] = Field(None, example="This is my grocery budget for the month.", description="Optional notes about the budget.")
 
-    @validator("category", "period", pre=True)
-    def normalize_fields(cls, v: str) -> str:
-        """
-        Normalize strings by trimming whitespace and lowercasing.
-        Applies to 'category' and 'period'.
-        """
+    @validator("category", pre=True)
+    def norm_category(cls, v):
         return v.strip().lower() if isinstance(v, str) else v
+
+    @validator("period", pre=True)
+    def norm_period(cls, v):
+        if isinstance(v, str):
+            v = v.strip().lower()
+            if v not in ALLOWED_PERIODS:
+                raise ValueError(f"period must be one of {sorted(ALLOWED_PERIODS)}")
+        return v
 
 
 class BudgetCreate(BudgetBase):
@@ -45,6 +50,13 @@ class BudgetUpdate(BaseModel):
         Normalize optional string fields if provided.
         """
         return v.strip().lower() if isinstance(v, str) else v
+
+    @validator("period")
+    def validate_period(cls, v: str) -> str:
+        if v is not None and v not in ALLOWED_PERIODS:
+            allowed = ", ".join(sorted(ALLOWED_PERIODS))
+            raise ValueError(f"Invalid period '{v}'. Allowed: {allowed}")
+        return v
 
 
 class BudgetOut(BudgetBase):

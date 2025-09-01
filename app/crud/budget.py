@@ -1,11 +1,12 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
 from fastapi import HTTPException
-
+from datetime import datetime
 from app.db.models.budget import Budget
 from app.schemas.budget import BudgetCreate, BudgetUpdate
 
-ALLOWED_PERIODS = {'weekly', 'monthly', 'yearly'}
+ALLOWED_PERIODS = {'weekly', 'monthly', 'yearly', 'quarterly', 'half-yearly'}
 
 def create_budget(db: Session, budget_data: BudgetCreate, user_id: int) -> Budget:
     """
@@ -23,15 +24,27 @@ def create_budget(db: Session, budget_data: BudgetCreate, user_id: int) -> Budge
 
 
 def get_user_budgets(
-        db: Session,
-        user_id: int,
-        period: Optional[str] = None,
-        category: Optional[str] = None,
-        skip: int = 0,
-        limit: int = 10
+    db: Session,
+    user_id: int,
+    period: Optional[str] = None,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    skip: int = 0,
+    limit: int = 10
 ) -> List[Budget]:
     """
-    Retrieve budgets for a user with optional normalized period and category filter and pagination.
+    Retrieve budgets for a user with optional filtering and pagination.
+
+    Filtering:
+        - period: Must match one of the allowed periods (e.g., "weekly", "monthly", "yearly").
+        - category: Case-insensitive match against the budget category.
+        - search: Case-insensitive partial match against category or notes.
+
+    Pagination:
+        - skip: Number of records to skip.
+        - limit: Maximum number of records to return.
     """
     query = db.query(Budget).filter(Budget.user_id == user_id)
 
@@ -45,7 +58,24 @@ def get_user_budgets(
         normalized_category = category.strip().lower()
         query = query.filter(Budget.category == normalized_category)
 
-    return query.offset(skip).limit(limit).all()
+    if search:
+        search_term = f"%{search.strip().lower()}%"
+        query = query.filter(
+            or_(
+                Budget.category.ilike(search_term),
+                Budget.notes.ilike(search_term)
+            )
+        )
+
+    if start_date and end_date:
+        query = query.filter(Budget.created_at.between(start_date, end_date))
+    elif start_date:
+        query = query.filter(Budget.created_at >= start_date)
+    elif end_date:
+        query = query.filter(Budget.created_at <= end_date)
+
+
+    return query.order_by(Budget.created_at.desc()).offset(skip).limit(limit).all()
 
 
 def get_budget_by_id(db: Session, budget_id: int, user_id: int) -> Optional[Budget]:
