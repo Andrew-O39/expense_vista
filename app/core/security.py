@@ -17,6 +17,7 @@ SECRET_KEY = settings.secret_key
 ALGORITHM = settings.algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
+
 # Password hashing context (uses bcrypt algorithm)
 pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 

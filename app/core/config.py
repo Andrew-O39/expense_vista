@@ -17,10 +17,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
 
     # ------------------------
-    # Email / Notifications
+    # Email / SES
     # ------------------------
-    sendgrid_api_key: str = Field(..., alias="SENDGRID_API_KEY")
-    email_from: str = Field(..., alias="EMAIL_FROM")
+    aws_region: str = Field(..., alias="AWS_REGION")
+    aws_access_key_id: str = Field(..., alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(..., alias="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(..., alias="AWS_REGION")
+    ses_sender: str = Field(..., alias="EMAIL_FROM")  # e.g. no-reply@yourdomain.com
 
     # ------------------------
     # Pydantic SettingsConfig
