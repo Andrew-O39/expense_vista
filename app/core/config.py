@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     aws_region: str = Field(..., alias="AWS_REGION")
     aws_access_key_id: str = Field(..., alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(..., alias="AWS_SECRET_ACCESS_KEY")
-    aws_region: str = Field(..., alias="AWS_REGION")
     ses_sender: str = Field(..., alias="EMAIL_FROM")  # e.g. no-reply@yourdomain.com
 
     # ------------------------
