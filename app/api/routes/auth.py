@@ -1,7 +1,9 @@
-# app/api/v1/auth.py
 from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
+
+from jinja2 import Template
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordRequestForm
@@ -92,6 +94,8 @@ def read_current_user(current_user: User = Depends(get_current_user)):
     response_model=MessageOut,
     summary="Request a password reset link",
 )
+
+
 def forgot_password(
     payload: PasswordResetRequest,
     db: Session = Depends(get_db),
@@ -105,7 +109,6 @@ def forgot_password(
 
     user = crud_user.get_user_by_email(db, email=email)
     if not user:
-        # Do not reveal whether the email exists
         return {"msg": "If this email is registered, you will receive a reset link shortly."}
 
     # Generate secure token and store HASH only
@@ -114,7 +117,6 @@ def forgot_password(
 
     expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
 
-    # You may also invalidate previous tokens for this user here if desired
     prt = PasswordResetToken(
         user_id=user.id,
         token_hash=token_hash,
@@ -127,18 +129,18 @@ def forgot_password(
     # Build reset URL for frontend
     reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={raw_token}"
 
-    # Simple HTML body (you can replace with a Jinja template if you prefer)
-    html = f"""
-    <div style="font-family: Arial, sans-serif; line-height:1.5">
-      <p>Hello {user.username},</p>
-      <p>We received a request to reset your password. Click the link below to choose a new one:</p>
-      <p><a href="{reset_url}">{reset_url}</a></p>
-      <p>This link will expire in 1 hour. If you did not request this, you can safely ignore this email.</p>
-      <p>— ExpenseVista</p>
-    </div>
-    """
+    # Load template file
+    template_path = Path(__file__).resolve().parent.parent / "templates" / "password_reset.html"
+    with open(template_path, "r") as f:
+        template = Template(f.read())
 
-    # Send via SES (returns True/False, but we do not leak result to caller)
+    # Render the template with context
+    html = template.render(
+        username=user.username,
+        reset_url=reset_url,
+        year=datetime.now().year
+    )
+
     try:
         send_alert_email(
             to_email=user.email,
@@ -146,7 +148,6 @@ def forgot_password(
             html_content=html,
         )
     except Exception:
-        # Intentionally swallow to avoid leaking sender status
         pass
 
     return {"msg": "If this email is registered, you will receive a reset link shortly."}
