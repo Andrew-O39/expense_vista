@@ -130,15 +130,15 @@ def forgot_password(
     reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={raw_token}"
 
     # Load template file
-    template_path = Path(__file__).resolve().parent.parent / "templates" / "password_reset.html"
-    with open(template_path, "r") as f:
-        template = Template(f.read())
+    template_path = Path(__file__).resolve().parents[2] / "templates" / "password_reset.html"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Template not found: {template_path}")
 
     # Render the template with context
-    html = template.render(
+    html = Template(template_path.read_text(encoding="utf-8")).render(
         username=user.username,
         reset_url=reset_url,
-        year=datetime.now().year
+        year=datetime.now().year,
     )
 
     try:
