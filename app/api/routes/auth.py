@@ -138,7 +138,7 @@ def forgot_password(
 
     # Render the template with context
     html = Template(template_path.read_text(encoding="utf-8")).render(
-        user_name=user.username,
+        username=user.username,
         reset_url=reset_url,
         year=datetime.now().year,
         expiry_minutes=settings.password_reset_expire_minutes,
