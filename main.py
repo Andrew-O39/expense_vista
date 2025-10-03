@@ -125,3 +125,4 @@ app.include_router(expense.router, tags=["Expenses"])
 app.include_router(income.router, tags=["Incomes"])
 app.include_router(alerts.router, tags=["Alerts"])
 app.include_router(summary.router, tags=["Summary"])
+

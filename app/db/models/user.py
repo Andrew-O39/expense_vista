@@ -31,16 +31,25 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
-        server_default=func.now()
+        server_default=func.now(),
+        nullable=False,
     )
 
     expenses = relationship("Expense", back_populates="owner", cascade="all, delete")
     budgets = relationship("Budget", back_populates="owner", cascade="all, delete")
     alert_logs = relationship("AlertLog", back_populates="user")
     incomes = relationship("Income", back_populates="user", cascade="all, delete-orphan")
+
+    # Link password reset tokens
+    password_reset_tokens = relationship(
+        "PasswordResetToken",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<User(username={self.username}, email={self.email})>"

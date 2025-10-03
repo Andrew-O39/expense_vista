@@ -5,7 +5,7 @@ Handles:
 - Secure password storage using bcrypt.
 - Token generation using JWT.
 """
-
+import hashlib, secrets
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt
@@ -65,3 +65,13 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     # Sign and encode the JWT
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def generate_reset_token() -> str:
+    # 32 bytes URL-safe random token
+    return secrets.token_urlsafe(32)
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+def reset_expiry(minutes: int = 30) -> datetime:
+    return datetime.utcnow() + timedelta(minutes=minutes)

@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     database_url: str = Field(..., alias="DATABASE_URL")
 
     # ------------------------
+    # Frontend
+    # ------------------------
+    frontend_url: str = Field(..., alias="FRONTEND_URL")
+
+    # ------------------------
     # Authentication / Security
     # ------------------------
     secret_key: str = Field(..., alias="SECRET_KEY")
@@ -22,7 +27,7 @@ class Settings(BaseSettings):
     aws_region: str = Field(..., alias="AWS_REGION")
     aws_access_key_id: str = Field(..., alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(..., alias="AWS_SECRET_ACCESS_KEY")
-    ses_sender: str = Field(..., alias="EMAIL_FROM")  # e.g. no-reply@yourdomain.com
+    ses_sender: str = Field(..., alias="EMAIL_FROM")  # e.g. no-reply@domain.com
 
     # ------------------------
     # Pydantic SettingsConfig

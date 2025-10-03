@@ -1,18 +1,38 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+# app/api/v1/auth.py
+from datetime import datetime, timedelta, timezone
+import hashlib
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from pydantic import EmailStr
 
 from app.db.session import get_db
 from app.crud import user as crud_user
-from app.core.security import verify_password, create_access_token
-from app.schemas.token import Token
-from app.schemas.user import UserCreate, UserOut
+from app.core.security import verify_password, create_access_token, get_password_hash
+from app.core.config import settings
 from app.api.deps import get_current_user
 from app.db.models.user import User
+from app.db.models.password_reset import PasswordResetToken
+
+# Schemas
+from app.schemas.token import Token
+from app.schemas.user import UserCreate, UserOut
+from app.schemas.common import MessageOut  # simple {"msg": "..."} schema
+from app.schemas.auth_password import (
+    PasswordResetRequest,
+    PasswordResetConfirm,
+)
+
+# Email
+from app.utils.email_sender import send_alert_email  # SES sender
 
 router = APIRouter(tags=["Authentication"])
 
-
+# -------------------------
+# Login
+# -------------------------
 @router.post("/login", response_model=Token)
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -20,9 +40,6 @@ def login(
 ):
     """
     Log in a user using username and password.
-
-    Returns:
-        A JWT access token if credentials are valid.
     """
     user = crud_user.get_user_by_username(db, username=form_data.username)
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -36,6 +53,9 @@ def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+# -------------------------
+# Register
+# -------------------------
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def register_user(
     user: UserCreate,
@@ -43,8 +63,6 @@ def register_user(
 ):
     """
     Register a new user account.
-
-    Ensures the username and email are unique, and stores the user with a hashed password.
     """
     if crud_user.get_user_by_username(db, user.username):
         raise HTTPException(status_code=400, detail="Username is already in use")
@@ -55,11 +73,130 @@ def register_user(
     return crud_user.create_user(db, user)
 
 
+# -------------------------
+# Me
+# -------------------------
 @router.get("/me", response_model=UserOut)
 def read_current_user(current_user: User = Depends(get_current_user)):
     """
     Get the currently authenticated user's information.
-
-    Requires a valid JWT access token.
     """
     return current_user
+
+
+# -------------------------
+# Password Reset: Request
+# -------------------------
+@router.post(
+    "/forgot-password",
+    response_model=MessageOut,
+    summary="Request a password reset link",
+)
+def forgot_password(
+    payload: PasswordResetRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Accepts an email and (if a user exists) creates a one-time reset token
+    and emails a reset link. Always returns 200 to avoid email enumeration.
+    """
+    # Normalize email
+    email: EmailStr = payload.email
+
+    user = crud_user.get_user_by_email(db, email=email)
+    if not user:
+        # Do not reveal whether the email exists
+        return {"msg": "If this email is registered, you will receive a reset link shortly."}
+
+    # Generate secure token and store HASH only
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    # You may also invalidate previous tokens for this user here if desired
+    prt = PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        used=False,
+    )
+    db.add(prt)
+    db.commit()
+
+    # Build reset URL for frontend
+    reset_url = f"{settings.frontend_url.rstrip('/')}/reset-password?token={raw_token}"
+
+    # Simple HTML body (you can replace with a Jinja template if you prefer)
+    html = f"""
+    <div style="font-family: Arial, sans-serif; line-height:1.5">
+      <p>Hello {user.username},</p>
+      <p>We received a request to reset your password. Click the link below to choose a new one:</p>
+      <p><a href="{reset_url}">{reset_url}</a></p>
+      <p>This link will expire in 1 hour. If you did not request this, you can safely ignore this email.</p>
+      <p>— ExpenseVista</p>
+    </div>
+    """
+
+    # Send via SES (returns True/False, but we do not leak result to caller)
+    try:
+        send_alert_email(
+            to_email=user.email,
+            subject="Reset your ExpenseVista password",
+            html_content=html,
+        )
+    except Exception:
+        # Intentionally swallow to avoid leaking sender status
+        pass
+
+    return {"msg": "If this email is registered, you will receive a reset link shortly."}
+
+
+# -------------------------
+# Password Reset: Confirm
+# -------------------------
+@router.post(
+    "/reset-password",
+    response_model=MessageOut,
+    summary="Reset password using a token",
+)
+def reset_password(
+    payload: PasswordResetConfirm,
+    db: Session = Depends(get_db),
+):
+    """
+    Confirms a password reset using the provided token and new password.
+    """
+    token_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
+
+    prt = (
+        db.query(PasswordResetToken)
+        .filter(
+            PasswordResetToken.token_hash == token_hash,
+            PasswordResetToken.used == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not prt:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    # Check expiry
+    if prt.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Token expired")
+
+    # Find user
+    user = db.query(User).get(prt.user_id)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    # Update password
+    user.hashed_password = get_password_hash(payload.new_password)
+    db.add(user)
+
+    # Burn token
+    prt.used = True
+    db.add(prt)
+
+    db.commit()
+
+    return {"msg": "Password has been reset successfully."}
