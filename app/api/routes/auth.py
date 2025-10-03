@@ -115,7 +115,9 @@ def forgot_password(
     raw_token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.password_reset_expire_minutes
+    )
 
     prt = PasswordResetToken(
         user_id=user.id,
@@ -136,9 +138,10 @@ def forgot_password(
 
     # Render the template with context
     html = Template(template_path.read_text(encoding="utf-8")).render(
-        username=user.username,
+        user_name=user.username,
         reset_url=reset_url,
         year=datetime.now().year,
+        expiry_minutes=settings.password_reset_expire_minutes,
     )
 
     try:
