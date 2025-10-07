@@ -7,3 +7,4 @@ from app.db.models.expense import Expense
 from app.db.models.budget import Budget
 from app.db.models.alert_log import AlertLog
 from app.db.models.income import Income
+from app.db.models.password_reset import PasswordResetToken

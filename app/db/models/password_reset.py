@@ -21,40 +21,24 @@ class PasswordResetToken(Base):
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
-        doc="Foreign key referencing the associated user. Cascade deletes when the user is removed."
+        index=True
     )
 
-    token_hash = Column(
-        String(128),
-        nullable=False,
-        unique=True,
-        index=True,
-        doc="SHA-256 hash of the raw reset token (never store the raw token)."
-    )
+    token_hash = Column(String(128), nullable=False, unique=True, index=True)
 
-    expires_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        index=True,
-        doc="UTC timestamp indicating when the token expires."
-    )
+    # Expiry is always required
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
 
-    used = Column(
-        Boolean,
-        default=False,
-        nullable=False,
-        doc="Flag indicating whether the token has already been used."
-    )
+    # Mark as used after first successful reset
+    used = Column(Boolean, default=False, nullable=False)
 
+    # Track creation + updates
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
         nullable=False,
-        doc="Timestamp when the token record was created (UTC)."
     )
-
     updated_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -62,21 +46,12 @@ class PasswordResetToken(Base):
         server_default=func.now(),
         server_onupdate=func.now(),
         nullable=False,
-        doc="Timestamp automatically updated whenever the token record is modified (UTC)."
     )
 
-    # Relationship back to the user
-    user = relationship(
-        "User",
-        back_populates="password_reset_tokens",
-        doc="Relationship linking this token to its user."
-    )
+    # Relationship back to user
+    user = relationship("User", back_populates="password_reset_tokens")
 
+    # Optimized index: lookup by token but only if not used
     __table_args__ = (
-        Index(
-            "ix_prt_token_not_used",
-            "token_hash",
-            "used",
-            doc="Optimized index to quickly locate unused tokens by hash."
-        ),
+        Index("ix_prt_token_not_used", "token_hash", "used"),
     )
