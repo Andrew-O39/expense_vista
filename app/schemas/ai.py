@@ -1,4 +1,3 @@
-# app/schemas/ai.py
 """
 Schemas for AI-powered features such as:
 - Category suggestion

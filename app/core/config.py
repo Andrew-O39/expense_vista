@@ -32,6 +32,10 @@ class Settings(BaseSettings):
 
     # AI
     ai_category_suggestion_enabled: bool = Field(default=False, alias="AI_CATEGORY_SUGGESTION_ENABLED")
+    ai_provider: str = Field("none", alias="AI_PROVIDER")  # "openai" | "bedrock" | "none"
+    openai_api_key: str | None = Field(None, alias="OPENAI_API_KEY")
+    bedrock_region: str | None = Field(None, alias="BEDROCK_REGION")
+    bedrock_model_id: str | None = Field(None, alias="BEDROCK_MODEL_ID")  # e.g. "anthropic.claude-3-haiku-20240307-v1:0"
 
     # ------------------------
     # Pydantic SettingsConfig
