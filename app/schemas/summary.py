@@ -45,12 +45,47 @@ class FinancialOverview(BaseModel):
 
 
 class GroupBucket(BaseModel):
+    """
+    Represents a single grouped financial summary bucket.
+
+    Each bucket corresponds to a specific time grouping (e.g., a month, quarter, or half-year)
+    and contains the total income, expenses, and resulting net balance for that period.
+
+    Attributes:
+        period (str): The label representing the group period.
+            Examples:
+                - "2025-01" → January 2025 (monthly)
+                - "2025-Q1" → First quarter of 2025 (quarterly)
+                - "2025-H1" → First half of 2025 (half-yearly)
+        total_income (float): Sum of all income recorded within this group period.
+        total_expenses (float): Sum of all expenses recorded within this group period.
+        net_balance (float): Net result (total_income - total_expenses) for the group period.
+    """
     period: str  # e.g. "2025-01", "2025-Q1", "2025-H1"
     total_income: float
     total_expenses: float
     net_balance: float
 
 class FinancialGroupOverview(BaseModel):
+    """
+    Schema representing grouped financial data summaries over time.
+
+    This model is used to return aggregated income and expense statistics
+    grouped by a specific time interval (e.g., weekly, monthly, quarterly, or half-yearly).
+
+    Attributes:
+        group_by (Literal["weekly", "monthly", "quarterly", "half-yearly"]):
+            Defines the interval used to group financial data.
+        start (datetime):
+            The start date of the grouping period.
+        end (datetime):
+            The end date of the grouping period.
+        category (Optional[str]):
+            Optional filter for a specific expense or income category.
+        results (List[GroupBucket]):
+            A list of grouped results, where each bucket represents a time
+            range containing aggregated totals (e.g., total income, total expenses, net balance).
+    """
     group_by: Literal["weekly", "monthly", "quarterly", "half-yearly"]
     start: datetime
     end: datetime

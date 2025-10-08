@@ -75,20 +75,76 @@ http://localhost:8000/docs
 ## Project Structure
 ```
  expense_vista/
+│
 ├── app/
-│   ├── api/              # API route definitions
-│   ├── core/             # Core configurations and settings
-│   ├── crud/             # CRUD operations
-│   ├── db/               # Database setup and session
-│   ├── models/           # Database models
-│   ├── services/         # Business logic (e.g., alerts)
-│   ├── utils/            # Utility functions (e.g., email sender)
-│   ├── templates/
-│   │   └── email_alert.html  # Email template
-├── alembic/              # Database migration scripts
-├── .env                  # Environment variables
-├── README.md             # Project documentation
-└── requirements.txt      # Python dependencies
+│   ├── __init__.py
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── routes/               ← Endpoints
+│   │       ├── __init__.py
+│   │       ├── auth.py
+│   │       ├── budget.py
+│   │       ├── expense.py
+│   │       ├── income.py          
+│   │       ├── alerts.py
+│   │       └── summary.py         ← Includes income + grouping logic
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── config.py              ← Pydantic Settings
+│   │   └── security.py            ← JWT + password hashing
+│   │
+│   ├── db/
+│   │   ├── __init__.py
+│   │   ├── base.py                ← Declarative Base
+│   │   ├── base_class.py          ← Imports all models for Alembic
+│   │   ├── session.py             ← Engine + get_db()
+│   │   └── models/             ← Income ORM model
+│   │       ├── __init__.py
+│   │       ├── user.py
+│   │       ├── expense.py
+│   │       ├── budget.py
+│   │       ├── alert_log.py
+│   │       └── income.py          
+│   │
+│   ├── crud/                    ← CRUD operations
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   ├── budget.py
+│   │   ├── expense.py
+│   │   ├── income.py        
+│   │   └── alert.py
+│   │
+│   ├── schemas/                 ← Pydantic schemas
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   ├── expense.py
+│   │   ├── budget.py
+│   │   ├── alert_log.py           
+│   │   └── income.py             
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── email_service.py
+│   │   └── alerts_service.py
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       └── date_utils.py          ← Handles date range logic
+│
+├── alembic/
+│   ├── versions/
+│   │   └── <timestamp>_add_incomes_table.py  ← Alembic migration
+│   ├── env.py
+│   └── alembic.ini
+│
+├── .env
+├── requirements.txt
+├── main.py                        ← Includes all routers + docs metadata
+├── CHANGELOG.md                   ← To be updated next
+├── README.md
+└── run.sh / Procfile (optional for deployment)
    ```
 ## Roadmap
 

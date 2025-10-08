@@ -38,11 +38,9 @@ class User(Base):
     incomes = relationship("Income", back_populates="user", cascade="all, delete-orphan")
 
     # Link password reset tokens
-    password_reset_tokens = relationship(
-        "PasswordResetToken",
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
+    password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
+
+    ml_category_maps = relationship("MLCategoryMap", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(username={self.username}, email={self.email})>"

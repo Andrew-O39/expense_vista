@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = Field(..., alias="AWS_SECRET_ACCESS_KEY")
     ses_sender: str = Field(..., alias="EMAIL_FROM")  # e.g. no-reply@domain.com
 
+    # AI
+    ai_category_suggestion_enabled: bool = Field(default=False, alias="AI_CATEGORY_SUGGESTION_ENABLED")
+
     # ------------------------
     # Pydantic SettingsConfig
     # ------------------------

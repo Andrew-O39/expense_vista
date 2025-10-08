@@ -8,3 +8,4 @@ from app.db.models.budget import Budget
 from app.db.models.alert_log import AlertLog
 from app.db.models.income import Income
 from app.db.models.password_reset import PasswordResetToken
+from app.db.models.ml_category_map import MLCategoryMap
