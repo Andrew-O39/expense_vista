@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import expense, auth, budget, alerts, summary, income
+from app.api.routes import ai
 
 # -------------------------------
 # Tag metadata for Swagger UI
@@ -125,4 +126,5 @@ app.include_router(expense.router, tags=["Expenses"])
 app.include_router(income.router, tags=["Incomes"])
 app.include_router(alerts.router, tags=["Alerts"])
 app.include_router(summary.router, tags=["Summary"])
+app.include_router(ai.router, tags=["AI"])
 
