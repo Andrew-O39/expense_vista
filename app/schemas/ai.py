@@ -72,3 +72,11 @@ class Subscription(BaseModel):
     cadence: str
     last_seen: str
     evidence: int
+
+class CategoryFeedbackReq(BaseModel):
+    """User feedback to teach the model a mapping from description -> category."""
+    description: str = Field(..., example="Uber ride to airport")
+    category: str = Field(..., example="transport")
+
+class MessageOut(BaseModel):
+    msg: str

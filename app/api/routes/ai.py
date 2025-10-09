@@ -8,7 +8,7 @@ This version preserves the original API (schemas + route names) and augments
 the logic with an optional LLM fallback behind a feature flag.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.db.models.expense import Expense
 from app.db.models.ml_category_map import MLCategoryMap
-from app.schemas.ai import SuggestReq, SuggestResp
+from app.schemas.ai import SuggestReq, SuggestResp, CategoryFeedbackReq, MessageOut
 from app.core.config import settings
 from app.core.ai_client import ai_client  # optional provider; disabled unless flagged
 
@@ -25,6 +25,9 @@ router = APIRouter(prefix="/ai", tags=["AI"])
 
 # --- Helper: normalize text (for matching keywords etc.) ---
 def norm_key(s: str) -> str:
+    return " ".join((s or "").lower().strip().split())
+
+def norm_cat(s: str) -> str:
     return " ".join((s or "").lower().strip().split())
 
 
@@ -122,3 +125,40 @@ def suggest_category(
         }
 
     return {"suggested_category": None, "confidence": 0.0, "rationale": "No match found"}
+
+
+@router.post("/category-feedback", response_model=MessageOut)
+def category_feedback(
+    payload: CategoryFeedbackReq,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Store / update a per-user mapping from normalized description to category.
+    Used to improve future category suggestions.
+    """
+    key = norm_key(payload.description)
+    cat = norm_cat(payload.category)
+
+    if not key or not cat:
+        raise HTTPException(status_code=400, detail="description and category are required")
+
+    # Upsert into MLCategoryMap
+    row = db.query(MLCategoryMap).filter(
+        MLCategoryMap.user_id == user.id,
+        MLCategoryMap.key == key
+    ).first()
+
+    if row:
+        # update category and bump a simple counter if you track one
+        row.category = cat
+        if hasattr(row, "confidence_count") and row.confidence_count is not None:
+            row.confidence_count += 1
+        db.add(row)
+    else:
+        row = MLCategoryMap(user_id=user.id, key=key, category=cat)
+        # optionally initialize confidence_count = 1 if you have that column
+        db.add(row)
+
+    db.commit()
+    return {"msg": "Thanks! Your preference will improve future suggestions."}

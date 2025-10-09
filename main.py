@@ -5,6 +5,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import expense, auth, budget, alerts, summary, income
 from app.api.routes import ai
+from app.api.routes import assistant
 
 # -------------------------------
 # Tag metadata for Swagger UI
@@ -120,11 +121,14 @@ def health_check():
 # -------------------------------
 # Include routers (order affects Swagger UI)
 # -------------------------------
+# --- Core app features ---
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(budget.router, tags=["Budgets"])
 app.include_router(expense.router, tags=["Expenses"])
 app.include_router(income.router, tags=["Incomes"])
 app.include_router(alerts.router, tags=["Alerts"])
 app.include_router(summary.router, tags=["Summary"])
-app.include_router(ai.router, tags=["AI"])
 
+# --- AI-powered features ---
+app.include_router(ai.router, tags=["AI"])
+app.include_router(assistant.router, tags=["AI"])
