@@ -1,66 +1,87 @@
-# app/services/nl_interpreter.py
 import re
 from typing import Optional, Tuple
 
-# Supported periods
-PERIOD_KEYWORDS = {
+# Recognized period keywords
+PERIOD_ALIASES = {
     "this week": "week",
+    "current week": "week",
     "last week": "last_week",
     "this month": "month",
+    "current month": "month",
     "last month": "last_month",
     "this quarter": "quarter",
+    "current quarter": "quarter",
     "last quarter": "last_quarter",
     "this year": "year",
+    "current year": "year",
     "last year": "last_year",
 }
 
-def parse_period(text: str) -> Optional[str]:
-    t = text.lower()
-    for k, v in PERIOD_KEYWORDS.items():
-        if k in t:
-            return v
-    # default
-    if "month" in t: return "month"
-    if "week" in t:  return "week"
-    if "quarter" in t: return "quarter"
-    if "year" in t: return "year"
-    return None
+PERIOD_PAT = re.compile(
+    r"\b(this|current|last)\s+(week|month|quarter|year)\b",
+    flags=re.I,
+)
 
-def parse_category(text: str) -> Optional[str]:
-    # naive: look for "on/for <category>" or after "category"
-    m = re.search(r"\b(?:on|for|category)\s+([a-zA-Z\-\s]+)", text.lower())
-    if m:
-        return " ".join(m.group(1).strip().split())
-    # fallback: common categories (tune as you wish)
-    commons = ["groceries", "transport", "utilities", "restaurants", "shopping", "subscriptions", "housing"]
-    for c in commons:
-        if c in text.lower():
-            return c
-    return None
+def _normalize(s: str) -> str:
+    return " ".join((s or "").lower().strip().split())
 
-def parse_intent(text: str) -> Tuple[str, dict]:
+def _extract_period(text: str):
     """
-    Returns (intent, params dict)
-    intents:
-      - spend_in_period
-      - spend_in_category_period
-      - income_expense_overview_period
-      - on_track_quarter (placeholder)
+    Returns (period_key, text_without_that_period_phrase)
+    If none found, returns (None, original_text)
     """
-    t = text.lower()
-    period = parse_period(t)
-    category = parse_category(t)
+    m = PERIOD_PAT.search(text)
+    if not m:
+        return None, text
+    phrase = m.group(0).lower()  # e.g. "this week"
+    period_key = PERIOD_ALIASES.get(phrase, None)
+    # remove the matched phrase from text so it can't pollute category
+    cleaned = (text[:m.start()] + text[m.end():]).strip()
+    return period_key, cleaned
 
-    if "how much did i spend" in t or "total spent" in t or "spend" in t:
-        if category:
-            return "spend_in_category_period", {"period": period or "month", "category": category}
-        return "spend_in_period", {"period": period or "month"}
+def parse_intent(message: str):
+    """
+    Very small NL interpreter:
+    - detects period (order-insensitive)
+    - tries to detect category words (minus the period phrase)
+    - returns (intent, params)
+    """
+    t = _normalize(message)
 
+    # 1) detect period and strip it from text to avoid contaminating category
+    period, rest = _extract_period(t)
+
+    # 2) see if user asks spend in category+period (order-insensitive)
+    #    trigger words for spending
+    if "spend" in t or "spent" in t or "expenses" in t:
+        # try to spot a category-ish token. We’ll use a simple heuristic:
+        # take the remaining words, drop common function words
+        stop = set(["how", "much", "did", "i", "on", "in", "this", "last", "current", "week",
+                    "month", "quarter", "year", "my", "the", "me", "spend", "spent", "expenses"])
+        # candidate category is the longest remaining token/phrase up to 2 words
+        tokens = [w for w in re.split(r"[^a-z0-9]+", rest) if w and w not in stop]
+        cat = " ".join(tokens[:2]).strip() if tokens else ""
+
+        if cat:
+            return "spend_in_category_period", {
+                "category": cat,
+                "period": period or "month",
+            }
+
+        # no category found → total spend in period
+        return "spend_in_period", {
+            "period": period or "month",
+        }
+
+    # 3) overview
+    if "income" in t and ("expense" in t or "spend" in t):
+        return "income_expense_overview_period", {
+            "period": period or "month",
+        }
+
+    # 4) on track
     if "on track" in t and "quarter" in t:
-        return "on_track_quarter", {"period": "quarter"}
+        return "on_track_quarter", {}
 
-    if "income" in t or "net" in t or "balance" in t or "overview" in t:
-        return "income_expense_overview_period", {"period": period or "month"}
-
-    # default
-    return "spend_in_period", {"period": period or "month"}
+    # fallback
+    return "unknown", {}
