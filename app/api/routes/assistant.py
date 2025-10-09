@@ -13,6 +13,13 @@ from app.utils.assistant_dates import period_range
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
+def _norm(s: str) -> str:
+    # mirror frontend normalization (lower + trim + collapse spaces)
+    return " ".join((s or "").lower().strip().split())
+
+def _euro(n: float) -> str:
+    return f"€{(n or 0):.2f}"
+
 @router.post("/assistant", response_model=AssistantReply)
 def ai_assistant(
     payload: AssistantMessage,
@@ -23,39 +30,48 @@ def ai_assistant(
     Natural-language assistant MVP:
     - Parses period + optional category from text
     - Computes figures using existing ORM models
-    - Returns a human-friendly reply + suggested UI actions
+    - Returns a human-friendly reply + UI actions that the frontend can navigate with
     """
     intent, params = parse_intent(payload.message or "")
     period = params.get("period", "month")
     start, end = period_range(period)
     actions: List[AssistantAction] = []
 
-    def euro(n: float) -> str:
-        return f"€{(n or 0):.2f}"
-
+    # ---- Spend in a specific category over a period ----
     if intent == "spend_in_category_period":
-        cat = (params.get("category") or "").strip().lower()
-        if not cat:
+        raw_cat = (params.get("category") or "").strip()
+        cat_norm = _norm(raw_cat)
+        if not cat_norm:
             raise HTTPException(status_code=400, detail="Could not detect a category.")
 
         total = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
             .filter(
                 Expense.user_id == user.id,
-                Expense.category == cat,
+                func.lower(Expense.category) == cat_norm,   # <-- normalize compare
                 Expense.created_at >= start,
                 Expense.created_at <= end,
             )
             .scalar()
-        )
-        reply = f"You spent {euro(total)} on {cat} in this {period.replace('_', ' ')}."
+        ) or 0.0
+
+        reply = f"You spent {_euro(total)} on {raw_cat or cat_norm} this {period.replace('_', ' ')}."
+
+        # return EXACT params ExpenseList understands via the assistant action
         actions.append(AssistantAction(
-            type="navigate",
+            type="open_expenses",
             label="See expenses",
-            params={"route": "/expenses", "period": period, "category": cat},
+            params={
+                "search": cat_norm,                    # ExpenseList treats category as search anyway
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "page": 1,
+                "limit": 10,
+            },
         ))
         return AssistantReply(reply=reply, actions=actions)
 
+    # ---- Spend (all categories) over a period ----
     if intent == "spend_in_period":
         total = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
@@ -65,15 +81,23 @@ def ai_assistant(
                 Expense.created_at <= end,
             )
             .scalar()
-        )
-        reply = f"You spent {euro(total)} in this {period.replace('_', ' ')}."
+        ) or 0.0
+
+        reply = f"You spent {_euro(total)} this {period.replace('_', ' ')}."
+
         actions.append(AssistantAction(
-            type="navigate",
+            type="open_expenses",
             label="See expenses",
-            params={"route": "/expenses", "period": period},
+            params={
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "page": 1,
+                "limit": 10,
+            },
         ))
         return AssistantReply(reply=reply, actions=actions)
 
+    # ---- Income vs expenses over a period ----
     if intent == "income_expense_overview_period":
         inc = (
             db.query(func.coalesce(func.sum(Income.amount), 0.0))
@@ -83,7 +107,8 @@ def ai_assistant(
                 Income.created_at <= end,
             )
             .scalar()
-        )
+        ) or 0.0
+
         exp = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
             .filter(
@@ -92,9 +117,14 @@ def ai_assistant(
                 Expense.created_at <= end,
             )
             .scalar()
+        ) or 0.0
+
+        net = inc - exp
+        reply = (
+            f"For this {period.replace('_', ' ')}, income is {_euro(inc)}, "
+            f"expenses are {_euro(exp)}, net is {_euro(net)}."
         )
-        net = (inc or 0) - (exp or 0)
-        reply = f"For this {period.replace('_', ' ')}, income is {euro(inc)}, expenses are {euro(exp)}, net is {euro(net)}."
+
         actions.append(AssistantAction(
             type="show_chart",
             label="Show Income vs Expenses",
@@ -102,8 +132,8 @@ def ai_assistant(
         ))
         return AssistantReply(reply=reply, actions=actions)
 
+    # ---- Simple quarterly “on track” placeholder ----
     if intent == "on_track_quarter":
-        # Simple heuristic: compare spent so far vs average month in quarter
         q_start, q_end = period_range("quarter")
         exp = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
@@ -113,8 +143,9 @@ def ai_assistant(
                 Expense.created_at <= q_end,
             )
             .scalar()
-        )
-        reply = f"So far this quarter, you've spent {euro(exp)}. We can add a proper budget target check later."
+        ) or 0.0
+
+        reply = f"So far this quarter, you've spent {_euro(exp)}. We can add a proper budget target check later."
         actions.append(AssistantAction(
             type="navigate",
             label="Open Dashboard",
@@ -122,4 +153,7 @@ def ai_assistant(
         ))
         return AssistantReply(reply=reply, actions=actions)
 
-    return AssistantReply(reply="I didn’t quite get that. Try asking: “How much did I spend on groceries last month?”", actions=[])
+    return AssistantReply(
+        reply="I didn’t quite get that. Try: “How much did I spend on groceries last month?”",
+        actions=[]
+    )
