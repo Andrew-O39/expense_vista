@@ -187,37 +187,44 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
 
     # ---- Budget status overall (no category): sum all budgets in the period ----
     if intent == "budget_status_period":
-        budget = _pick_budget(db, user.id, None, period, start, end)
-        if not budget:
-            # If you support multiple budgets per period, you can sum them instead.
-            reply = f"I couldn’t find any {period.replace('_',' ')} budgets."
-            return AssistantReply(reply=reply, actions=actions)
+        # Map period -> your Budget.period values
+        period_map = {
+            "week": "weekly", "last_week": "weekly",
+            "month": "monthly", "last_month": "monthly",
+            "quarter": "quarterly", "last_quarter": "quarterly",
+            "half_year": "half-yearly", "last_half_year": "half-yearly",
+            "year": "yearly", "last_year": "yearly",
+        }
+        target = period_map.get(period, "monthly")
 
-        # If you have multiple budgets per user/period, replace this with SUM(limit_amount)
         total_budget = (
-            db.query(func.coalesce(func.sum(Budget.limit_amount), 0.0))
-              .filter(
-                  Budget.user_id == user.id,
-                  Budget.period == budget.period,
-                  Budget.created_at <= end,
-              )
-              .scalar()
-        ) or 0.0
+                           db.query(func.coalesce(func.sum(Budget.limit_amount), 0.0))
+                           .filter(
+                               Budget.user_id == user.id,
+                               Budget.period == target,
+                               Budget.created_at <= end,  # or valid_to >= start if you have ranges
+                           )
+                           .scalar()
+                       ) or 0.0
 
         total_spent = (
-            db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(
-                  Expense.user_id == user.id,
-                  Expense.created_at >= start,
-                  Expense.created_at <= end,
-              )
-              .scalar()
-        ) or 0.0
+                          db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+                          .filter(
+                              Expense.user_id == user.id,
+                              Expense.created_at >= start,
+                              Expense.created_at <= end,
+                          )
+                          .scalar()
+                      ) or 0.0
+
+        if total_budget == 0.0:
+            reply = f"I couldn’t find any {period.replace('_', ' ')} budgets."
+            return AssistantReply(reply=reply, actions=actions)
 
         remaining = total_budget - total_spent
         status = "under" if remaining >= 0 else "over"
         reply = (
-            f"Your total {period.replace('_',' ')} budget is {_euro(total_budget)}. "
+            f"Your total {period.replace('_', ' ')} budget is {_euro(total_budget)}. "
             f"Total spent is {_euro(total_spent)}, so you are {status} budget by {_euro(abs(remaining))}."
         )
         actions.append(AssistantAction(
@@ -226,6 +233,7 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
             params={"start_date": start.isoformat(), "end_date": end.isoformat()},
         ))
         return AssistantReply(reply=reply, actions=actions)
+
 
     # ---- Simple quarterly “on track” placeholder ----
     if intent == "on_track_quarter":
