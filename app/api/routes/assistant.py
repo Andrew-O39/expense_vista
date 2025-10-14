@@ -205,8 +205,8 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
             f"You’ve spent {_euro(spent)}, so you are {status} budget by {_euro(abs(remaining))}."
         )
         actions.append(AssistantAction(
-            type="open_expenses",
-            label="See expenses",
+            type="open_budgets",
+            label="See budgets",
             params={
                 "search": cat,
                 "category": cat,
