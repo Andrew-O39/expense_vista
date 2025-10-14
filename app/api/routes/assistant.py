@@ -121,32 +121,34 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
 
     # ---- Income total in period ----
     if intent == "income_in_period":
+        ts = func.coalesce(Income.received_at, Income.created_at)  # fallback safety
         inc = (
                   db.query(func.coalesce(func.sum(Income.amount), 0.0))
                   .filter(
                       Income.user_id == user.id,
-                      Income.created_at >= start,
-                      Income.created_at <= end,
+                      ts >= start,
+                      ts <= end,
                   )
                   .scalar()
               ) or 0.0
 
         reply = f"Your income this {period.replace('_', ' ')} is {_euro(inc)}."
         actions.append(AssistantAction(
-            type="open_expenses",  # or a future "open_incomes" if you build that page
-            label="See expenses",  # you can change/omit until you add an incomes page
+            type="open_incomes",  # swap to open_incomes if/when you build that page
+            label="See incomes",
             params={"start_date": start.isoformat(), "end_date": end.isoformat()},
         ))
         return AssistantReply(reply=reply, actions=actions)
 
     # ---- Income vs expenses over a period ----
     if intent == "income_expense_overview_period":
+        income_ts = func.coalesce(Income.received_at, Income.created_at)
         inc = (
                   db.query(func.coalesce(func.sum(Income.amount), 0.0))
                   .filter(
                       Income.user_id == user.id,
-                      Income.created_at >= start,
-                      Income.created_at <= end,
+                      income_ts >= start,
+                      income_ts <= end,
                   )
                   .scalar()
               ) or 0.0
@@ -162,10 +164,10 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
               ) or 0.0
 
         net = inc - exp
-        status = "surplus" if net >= 0 else "deficit"
+        stance = "surplus" if net >= 0 else "deficit"
         reply = (
             f"For this {period.replace('_', ' ')}, income is {_euro(inc)}, "
-            f"expenses are {_euro(exp)}, net is {_euro(net)} ({status})."
+            f"expenses are {_euro(exp)}, net is {_euro(net)} ({stance})."
         )
         actions.append(AssistantAction(
             type="show_chart",
