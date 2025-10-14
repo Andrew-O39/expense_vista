@@ -40,69 +40,86 @@ def _extract_period(text: str):
     cleaned = (text[:m.start()] + text[m.end():]).strip()
     return period_key, cleaned
 
-def _extract_category(text: str) -> str:
-    t = text
-    # “my groceries budget”, “groceries budget”
-    m = re.search(r"\b(?:my\s+)?([a-z0-9\s]+?)\s+budget\b", t)
-    if m:
-        cand = _clean(m.group(1))
-        if cand: return cand
-
-    # “budget for groceries”
-    m = re.search(r"\bbudget\s+(?:for|on|of)\s+([a-z0-9\s]+)\b", t)
-    if m:
-        cand = _clean(m.group(1))
-        if cand: return cand
-
-    # “spend on groceries”, “spent on transport”
-    m = re.search(r"\bspen[td]\s+(?:money\s+)?(?:on|for)\s+([a-z0-9\s]+)\b", t)
-    if m:
-        cand = _clean(m.group(1))
-        if cand: return cand
-
-    # generic “on/for X” but only if it’s not just stop words
-    m = re.search(r"\b(?:on|for)\s+([a-z0-9\s]+)\b", t)
-    if m:
-        cand = _clean(m.group(1))
-        if cand: return cand
-
-    # no category unless a pattern matched
-    return ""
-
 def _clean(s: str) -> str:
     s = re.sub(r"[^a-z0-9\s]+", " ", s.lower())
     s = re.sub(r"\b(" + "|".join(map(re.escape, STOP_WORDS)) + r")\b", " ", s)
     s = " ".join(s.split())
     return s
 
+def _valid_cat(c: str) -> bool:
+    if not c: return False
+    if len(c) < 2: return False          # reject one-letter “i”
+    if c in {"i","am"}: return False
+    return True
+
+def _extract_category(text: str) -> str:
+    t = text
+
+    # 1) “over/under budget on/for X”
+    m = re.search(r"\b(?:over|under)\s+budget\s+(?:on|for)\s+([a-z0-9\s]+)\b", t)
+    if m:
+        cand = _clean(m.group(1))
+        if _valid_cat(cand): return cand
+
+    # 2) “budget for/on/of X”
+    m = re.search(r"\bbudget\s+(?:for|on|of)\s+([a-z0-9\s]+)\b", t)
+    if m:
+        cand = _clean(m.group(1))
+        if _valid_cat(cand): return cand
+
+    # 3) “my X budget” / “X budget” (but avoid “i over budget”)
+    m = re.search(r"\b(?:my\s+)?([a-z0-9\s]+?)\s+budget\b", t)
+    if m:
+        raw = m.group(1).strip().lower()
+        if not re.search(r"\b(over|under)\b", raw):  # avoid “i over”
+            cand = _clean(raw)
+            if _valid_cat(cand): return cand
+
+    # 4) “spend on/for X”, “spent on/for X”
+    m = re.search(r"\bspen[td]\s+(?:money\s+)?(?:on|for)\s+([a-z0-9\s]+)\b", t)
+    if m:
+        cand = _clean(m.group(1))
+        if _valid_cat(cand): return cand
+
+    # 5) generic “on/for X”
+    m = re.search(r"\b(?:on|for)\s+([a-z0-9\s]+)\b", t)
+    if m:
+        cand = _clean(m.group(1))
+        if _valid_cat(cand): return cand
+
+    return ""
+
 def parse_intent(message: str):
     t = _normalize(message)
     period, rest = _extract_period(t)
 
-    # 1) income vs expenses (or compare …)
+    # income vs expenses (compare)
     if (any(w in t for w in INCOME_WORDS) and
         (" vs " in t or "versus" in t or "compare" in t or any(w in t for w in EXPENSE_WORDS))):
         return "income_expense_overview_period", {"period": period or "month"}
 
-    # 2) budget queries
+    # income-only totals (e.g. “total income this month”)
+    if any(w in t for w in INCOME_WORDS) and not any(w in t for w in EXPENSE_WORDS | BUDGET_WORDS):
+        return "income_in_period", {"period": period or "month"}
+
+    # budgets
     if "budget" in t or any(w in t for w in BUDGET_WORDS):
         cat = _extract_category(rest)
         if cat:
             return "budget_status_category_period", {"category": cat, "period": period or "month"}
         return "budget_status_period", {"period": period or "month"}
 
-    # 3) “top category”
+    # “top category …”
     if any(w in t for w in TOP_WORDS) and ("category" in t or "categories" in t or any(w in t for w in EXPENSE_WORDS)):
         return "top_category_in_period", {"period": period or "month"}
 
-    # 4) generic spend
+    # generic spend
     if any(w in t for w in EXPENSE_WORDS):
         cat = _extract_category(rest)
         if cat:
             return "spend_in_category_period", {"category": cat, "period": period or "month"}
         return "spend_in_period", {"period": period or "month"}
 
-    # heuristic
     if "on track" in t and "quarter" in t:
         return "on_track_quarter", {}
 

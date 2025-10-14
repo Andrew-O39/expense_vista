@@ -119,6 +119,26 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         ))
         return AssistantReply(reply=reply, actions=actions)
 
+    # ---- Income total in period ----
+    if intent == "income_in_period":
+        inc = (
+                  db.query(func.coalesce(func.sum(Income.amount), 0.0))
+                  .filter(
+                      Income.user_id == user.id,
+                      Income.created_at >= start,
+                      Income.created_at <= end,
+                  )
+                  .scalar()
+              ) or 0.0
+
+        reply = f"Your income this {period.replace('_', ' ')} is {_euro(inc)}."
+        actions.append(AssistantAction(
+            type="open_expenses",  # or a future "open_incomes" if you build that page
+            label="See expenses",  # you can change/omit until you add an incomes page
+            params={"start_date": start.isoformat(), "end_date": end.isoformat()},
+        ))
+        return AssistantReply(reply=reply, actions=actions)
+
     # ---- Income vs expenses over a period ----
     if intent == "income_expense_overview_period":
         inc = (
