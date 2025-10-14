@@ -1,4 +1,3 @@
-# app/api/routes/assistant.py (only showing the parts to add/replace)
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -123,20 +122,30 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
     # ---- Income vs expenses over a period ----
     if intent == "income_expense_overview_period":
         inc = (
-            db.query(func.coalesce(func.sum(Income.amount), 0.0))
-              .filter(Income.user_id == user.id, Income.created_at >= start, Income.created_at <= end)
-              .scalar()
-        ) or 0.0
+                  db.query(func.coalesce(func.sum(Income.amount), 0.0))
+                  .filter(
+                      Income.user_id == user.id,
+                      Income.created_at >= start,
+                      Income.created_at <= end,
+                  )
+                  .scalar()
+              ) or 0.0
+
         exp = (
-            db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(Expense.user_id == user.id, Expense.created_at >= start, Expense.created_at <= end)
-              .scalar()
-        ) or 0.0
+                  db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+                  .filter(
+                      Expense.user_id == user.id,
+                      Expense.created_at >= start,
+                      Expense.created_at <= end,
+                  )
+                  .scalar()
+              ) or 0.0
+
         net = inc - exp
-        stance = "surplus" if net >= 0 else "deficit"
+        status = "surplus" if net >= 0 else "deficit"
         reply = (
             f"For this {period.replace('_', ' ')}, income is {_euro(inc)}, "
-            f"expenses are {_euro(exp)}, net is {_euro(net)} ({stance})."
+            f"expenses are {_euro(exp)}, net is {_euro(net)} ({status})."
         )
         actions.append(AssistantAction(
             type="show_chart",
@@ -234,6 +243,33 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         ))
         return AssistantReply(reply=reply, actions=actions)
 
+    # ---- Top category in period ----
+    if intent == "top_category_in_period":
+        row = (
+            db.query(Expense.category, func.sum(Expense.amount).label("total"))
+            .filter(
+                Expense.user_id == user.id,
+                Expense.created_at >= start,
+                Expense.created_at <= end,
+            )
+            .group_by(Expense.category)
+            .order_by(desc("total"))
+            .first()
+        )
+        if not row:
+            return AssistantReply(
+                reply=f"I couldn't find any expenses in this {period.replace('_', ' ')}.",
+                actions=[]
+            )
+
+        top_cat, total = row[0], float(row[1] or 0.0)
+        reply = f"Your top category this {period.replace('_', ' ')} is '{top_cat}' at {_euro(total)}."
+        actions.append(AssistantAction(
+            type="open_expenses",
+            label="See expenses",
+            params={"category": top_cat, "start_date": start.isoformat(), "end_date": end.isoformat()},
+        ))
+        return AssistantReply(reply=reply, actions=actions)
 
     # ---- Simple quarterly “on track” placeholder ----
     if intent == "on_track_quarter":
