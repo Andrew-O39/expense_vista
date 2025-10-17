@@ -31,6 +31,37 @@ def norm_cat(s: str) -> str:
     return " ".join((s or "").lower().strip().split())
 
 
+@router.get("/health")
+def ai_health_check():
+    """
+    Returns the current AI configuration status (useful for debugging).
+    """
+    from app.core.config import settings
+    from app.core.ai_client import ai_client
+
+    status = {
+        "ai_category_suggestion_enabled": bool(settings.ai_category_suggestion_enabled),
+        "ai_provider": settings.ai_provider or "none",
+        "openai_api_key_set": bool(settings.openai_api_key),
+        "bedrock_region": settings.bedrock_region or None,
+        "ai_client_enabled": ai_client.enabled(),
+        "provider_loaded": ai_client.provider,
+    }
+
+    # Optional: test a minimal request if AI is enabled
+    if ai_client.enabled():
+        try:
+            test_result = ai_client.complete(
+                "You are a diagnostic assistant.",
+                "Reply with the single word 'ok'."
+            )
+            status["test_completion"] = test_result or "no response"
+        except Exception as e:
+            status["test_error"] = str(e)
+
+    return status
+
+
 @router.post("/suggest-category", response_model=SuggestResp)
 def suggest_category(
     payload: SuggestReq,
@@ -41,12 +72,10 @@ def suggest_category(
     Suggest a category for a new expense based on description, amount, and user history.
 
     Priority:
-      1) User memory (MLCategoryMap.key -> category)
+      1) User memory (MLCategoryMap.pattern -> category)
       2) LLM suggestion (if enabled)
       3) Keyword rules
       4) Most frequent category fallback
-
-    Returns a SuggestResp with suggested_category, confidence, rationale.
     """
     desc = norm_key(payload.description)
     if not desc:
@@ -84,6 +113,8 @@ def suggest_category(
         )
         if llm_cat:
             cat = norm_key(llm_cat)
+            # strip wrapping quotes/backticks just in case
+            cat = cat.strip("`'\" ")
             if cat:
                 return {
                     "suggested_category": cat,
