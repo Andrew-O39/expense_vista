@@ -307,21 +307,45 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         actions.append(AssistantAction(type="navigate", label="Open Dashboard", params={"route": "/dashboard"}))
         return AssistantReply(reply=reply, actions=actions)
 
+    # ---------- LLM fallback when rule-based parser returns "unknown" ----------
     if intent == "unknown" and settings.ai_assistant_enabled and settings.ai_provider == "openai":
         try:
             prompt = (
-                "Extract a JSON object for a finance question.\n"
-                "Allowed intents: ['spend_in_period','spend_in_category_period','budget_status',"
-                "'income_expense_overview_period','top_category_period','total_income_period'].\n"
+                "You are a financial assistant. Extract a JSON object from the user's question.\n"
+                "Allowed intents: ['spend_in_period','spend_in_category_period',"
+                "'budget_status','income_expense_overview_period','top_category_period','total_income_period'].\n"
                 "Params may include: { 'period'?: str, 'category'?: str }.\n"
-                "Respond only with JSON.\n\n"
+                "Periods you may use: week, last_week, month, last_month, quarter, last_quarter, half_year, last_half_year, year, last_year.\n"
+                "Return ONLY JSON like: {\"intent\":\"...\",\"params\":{\"period\":\"month\",\"category\":\"groceries\"}}\n\n"
                 f"User: {payload.message}"
             )
-            data = llm_complete_json(prompt)
-            new_intent = data.get("intent") or "unknown"
+            data = llm_complete_json(prompt) or {}
+            new_intent = (data.get("intent") or "unknown").strip()
             new_params = data.get("params") or {}
+
+            # Map LLM intent names to the ones this route implements
             if new_intent != "unknown":
-                intent, params = new_intent, {**params, **new_params}
+                # normalize category text if present
+                if "category" in new_params and isinstance(new_params["category"], str):
+                    new_params["category"] = _clean_category(new_params["category"])
+
+                # map generic intents → implemented ones
+                if new_intent == "budget_status":
+                    # pick category/no-category handler
+                    if new_params.get("category"):
+                        new_intent = "budget_status_category_period"
+                    else:
+                        new_intent = "budget_status_period"
+
+                elif new_intent == "top_category_period":
+                    new_intent = "top_category_in_period"
+
+                elif new_intent == "total_income_period":
+                    new_intent = "income_in_period"
+
+                # adopt updated intent/params and recompute period window
+                intent = new_intent
+                params = {**params, **new_params}
                 period = params.get("period", period)
                 start, end = period_range(period)
         except Exception as e:
