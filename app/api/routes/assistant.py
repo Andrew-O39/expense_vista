@@ -15,10 +15,96 @@ from app.schemas.assistant import AssistantMessage, AssistantReply, AssistantAct
 from app.services.nl_interpreter import parse_intent, PERIOD_ALIASES
 from app.services.llm_client import llm_complete_json
 from app.utils.assistant_dates import period_range
+import re
+from calendar import monthrange
+
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 # ---------- Helpers ----------
+MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12
+}
+
+def _month_name_to_num(name: str) -> int | None:
+    return MONTHS.get(name.strip().lower())
+
+def _end_of_day(dt: datetime) -> datetime:
+    return dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+def _month_range(year: int, month: int) -> tuple[datetime, datetime]:
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    last_day = monthrange(year, month)[1]
+    end = datetime(year, month, last_day, tzinfo=timezone.utc)
+    end = _end_of_day(end)
+    return start, end
+
+def _humanize_range(start: datetime, end: datetime, original: str | None = None) -> str:
+    """Make a friendly label for replies."""
+    if original in {"week","last_week","month","last_month","quarter","last_quarter",
+                    "half_year","last_half_year","year","last_year"}:
+        return original.replace("_", " ")
+    # If explicit dates:
+    if start.year == end.year and start.month == end.month:
+        # e.g., “September 2025”
+        return f"{start.strftime('%B %Y')}"
+    # cross-month in same year → “Sep–Oct 2025”
+    if start.year == end.year:
+        return f"{start.strftime('%b')}–{end.strftime('%b %Y')}"
+    # cross-year
+    return f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}"
+
+def _heuristic_range_from_text(text: str) -> tuple[datetime, datetime] | None:
+    """
+    Fallback parser for:
+      - 'since <Month>' or 'since <Month> <Year>'
+      - '<Month>' (assumes current year)
+      - '<Month> and <Month>' (assumes current year)
+      - 'last <N> days'
+    Returns (start, end) in UTC or None if not matched.
+    """
+    t = " ".join((text or "").lower().split())
+    now = datetime.now(timezone.utc)
+
+    # last N days
+    m = re.search(r"last\s+(\d{1,3})\s+days?", t)
+    if m:
+        n = int(m.group(1))
+        start = (now - timedelta(days=n-1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end = _end_of_day(now)
+        return start, end
+
+    # since <month> [year]
+    m = re.search(r"since\s+([a-z]+)(?:\s+(\d{4}))?", t)
+    if m:
+        mn = _month_name_to_num(m.group(1))
+        if mn:
+            y = int(m.group(2)) if m.group(2) else now.year
+            start = datetime(y, mn, 1, tzinfo=timezone.utc)
+            end = _end_of_day(now)
+            return start, end
+
+    # "<Month> and <Month>" (same year)
+    m = re.search(r"\b([a-z]+)\s+and\s+([a-z]+)\b", t)
+    if m:
+        m1, m2 = _month_name_to_num(m.group(1)), _month_name_to_num(m.group(2))
+        if m1 and m2:
+            y = now.year
+            s1, e1 = _month_range(y, m1)
+            s2, e2 = _month_range(y, m2)
+            return (min(s1, s2), max(e1, e2))
+
+    # single <Month> [Year]
+    m = re.search(r"\b([a-z]+)\s*(\d{4})?\b", t)
+    if m:
+        mn = _month_name_to_num(m.group(1))
+        if mn:
+            y = int(m.group(2)) if m.group(2) else now.year
+            return _month_range(y, mn)
+
+    return None
 
 def _euro(n: float) -> str:
     return f"€{(n or 0):.2f}"
@@ -47,20 +133,31 @@ def _normalize_period(p: Optional[str]) -> str:
     p = " ".join((p or "").lower().split())
     return PERIOD_ALIASES.get(p, p)
 
-def _resolve_range(params: dict) -> tuple[datetime, datetime, str, str]:
+def _resolve_range(params: dict, original_text: str | None = None) -> tuple[datetime, datetime, str]:
     """
-    Prefer explicit start/end from params; otherwise use normalized period.
-    Returns (start, end, period_key, period_label_for_reply)
+    Priority:
+      1) explicit start/end in params
+      2) heuristic parse from message text
+      3) named period → period_range()
+    Returns (start, end, period_label)
     """
+    # 1) explicit
     if "start" in params and "end" in params:
         start = _parse_iso(params["start"])
         end   = _parse_iso(params["end"])
-        return start, end, "custom", "period"  # neutral label
+        return start, end, _humanize_range(start, end)
 
+    # 2) heuristics
+    if original_text:
+        r = _heuristic_range_from_text(original_text)
+        if r:
+            s, e = r
+            return s, e, _humanize_range(s, e)
+
+    # 3) named period (normalize aliases)
     period = _normalize_period(params.get("period"))
-    start, end = period_range(period)
-    label = period.replace("_", " ")
-    return start, end, period, label
+    s, e = period_range(period)
+    return s, e, period.replace("_", " ")
 
 def _pick_budget(db: Session, user_id: int, category: Optional[str], period_key: str, end_dt: datetime) -> Optional[Budget]:
     period_map = {
@@ -114,51 +211,40 @@ def ai_intent_debug(payload: dict):
 # ---------- Assistant endpoint (AI-first, rules fallback) ----------
 
 @router.post("/assistant", response_model=AssistantReply)
-def ai_assistant(
-    payload: AssistantMessage,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
+def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=Depends(get_current_user)):
     text = (payload.message or "").strip()
 
+    # 1) AI-first intent extraction
     intent, params = "unknown", {}
-
-    # 1) AI first
     if settings.ai_assistant_enabled and settings.ai_provider == "openai":
         try:
             prompt = (
                 "You are a finance intent extractor. Respond ONLY with strict JSON.\n"
-                "Allowed intents: [\n"
-                "  'spend_in_period', 'spend_in_category_period',\n"
-                "  'income_expense_overview_period', 'top_category_in_period',\n"
-                "  'budget_status_category_period', 'budget_status_period',\n"
-                "  'income_in_period'\n"
-                "]\n"
-                "Params may include: { 'period'?: str, 'category'?: str, 'start'?: str, 'end'?: str }.\n"
-                "Use ISO UTC for start/end when the user names months/ranges or says 'since ...'.\n"
-                "If start/end are present, omit 'period'. Return ONLY JSON.\n\n"
-                f"User: {text}"
+                "Allowed intents: ['spend_in_period','spend_in_category_period',"
+                "'income_expense_overview_period','top_category_in_period',"
+                "'budget_status_category_period','budget_status_period','income_in_period']\n"
+                "Params may include: { 'period'?: str, 'category'?: str, 'start'?: iso, 'end'?: iso }.\n"
+                "If the user says 'September', 'since July', or 'September and October', compute explicit start/end (UTC).\n"
+                "If both start/end are provided, omit 'period'. Return only JSON."
             )
-            parsed = llm_complete_json(prompt)
+            parsed = llm_complete_json(f"{prompt}\n\nUser: {text}")
             if parsed:
-                alias_map = {
-                    "budget_status": "budget_status_period",
-                    "top_category_period": "top_category_in_period",
-                }
+                alias = {"budget_status": "budget_status_period", "top_category_period": "top_category_in_period"}
                 i = (parsed.get("intent") or "unknown").lower()
-                intent = alias_map.get(i, i)
+                intent = alias.get(i, i)
                 params = parsed.get("params") or {}
         except Exception as e:
-            print("LLM parse failed:", e)
+            print("LLM fallback failed:", e)
 
     # 2) Rules fallback if AI failed
     if intent == "unknown":
-        intent, parsed_params = parse_intent(text)
-        # keep any AI-provided start/end if they existed (here they don't, but keeps the pattern)
-        params = {**parsed_params, **({} if "start" in params or "end" in params else {})}
+        intent, rule_params = parse_intent(text)
+        # merge, but keep any start/end we might add later:
+        params = {**rule_params}
 
-    # 3) Resolve the date range ONCE, then pass to handlers
-    start, end, period_key, period_label = _resolve_range(params)
+    # 3) Resolve time range + friendly label (critical fix)
+    start, end, period_label = _resolve_range(params, original_text=text)
+
     actions: List[AssistantAction] = []
 
     # ---- Spend in category over a period ----
@@ -168,23 +254,18 @@ def ai_assistant(
             raise HTTPException(status_code=400, detail="Could not detect a category.")
         total = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(
-                  Expense.user_id == user.id,
-                  func.lower(Expense.category) == cat,
-                  Expense.created_at >= start,
-                  Expense.created_at <= end,
-              ).scalar()
+              .filter(Expense.user_id == user.id,
+                      func.lower(Expense.category) == cat,
+                      Expense.created_at >= start,
+                      Expense.created_at <= end)
+              .scalar()
         ) or 0.0
-        reply = f"You spent {_euro(total)} on {cat} in this {period_label}."
+        reply = f"You spent {_euro(total)} on {cat} in {period_label}."
         actions.append(AssistantAction(
             type="open_expenses",
             label="See expenses",
-            params={
-                "search": cat,
-                "category": cat,
-                "start_date": start.isoformat(),
-                "end_date": end.isoformat(),
-            },
+            params={"search": cat, "category": cat,
+                    "start_date": start.isoformat(), "end_date": end.isoformat()},
         ))
         return AssistantReply(reply=reply, actions=actions)
 
@@ -192,13 +273,12 @@ def ai_assistant(
     if intent == "spend_in_period":
         total = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(
-                  Expense.user_id == user.id,
-                  Expense.created_at >= start,
-                  Expense.created_at <= end,
-              ).scalar()
+              .filter(Expense.user_id == user.id,
+                      Expense.created_at >= start,
+                      Expense.created_at <= end)
+              .scalar()
         ) or 0.0
-        reply = f"You spent {_euro(total)} in this {period_label}."
+        reply = f"You spent {_euro(total)} in {period_label}."
         actions.append(AssistantAction(
             type="open_expenses",
             label="See expenses",
@@ -211,13 +291,10 @@ def ai_assistant(
         ts = func.coalesce(Income.received_at, Income.created_at)
         inc = (
             db.query(func.coalesce(func.sum(Income.amount), 0.0))
-              .filter(
-                  Income.user_id == user.id,
-                  ts >= start,
-                  ts <= end,
-              ).scalar()
+              .filter(Income.user_id == user.id, ts >= start, ts <= end)
+              .scalar()
         ) or 0.0
-        reply = f"Your income this {period_label} is {_euro(inc)}."
+        reply = f"Your income in {period_label} is {_euro(inc)}."
         actions.append(AssistantAction(
             type="open_incomes",
             label="See incomes",
@@ -225,34 +302,33 @@ def ai_assistant(
         ))
         return AssistantReply(reply=reply, actions=actions)
 
-    # ---- Income vs expenses over a period ----
+    # ---- Income vs expenses ----
     if intent == "income_expense_overview_period":
         income_ts = func.coalesce(Income.received_at, Income.created_at)
         inc = (
             db.query(func.coalesce(func.sum(Income.amount), 0.0))
-              .filter(Income.user_id == user.id, income_ts >= start, income_ts <= end)
+              .filter(Income.user_id == user.id,
+                      income_ts >= start, income_ts <= end)
               .scalar()
         ) or 0.0
         exp = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(Expense.user_id == user.id, Expense.created_at >= start, Expense.created_at <= end)
+              .filter(Expense.user_id == user.id,
+                      Expense.created_at >= start, Expense.created_at <= end)
               .scalar()
         ) or 0.0
         net = inc - exp
         stance = "surplus" if net >= 0 else "deficit"
-        reply = (
-            f"For this {period_label}, income is {_euro(inc)}, "
-            f"expenses are {_euro(exp)}, net is {_euro(net)} ({stance})."
-        )
-        actions.append(AssistantAction(type="show_chart", label="Show Income vs Expenses", params={"period": period_key}))
+        reply = f"For {period_label}, income is {_euro(inc)}, expenses are {_euro(exp)}, net is {_euro(net)} ({stance})."
+        actions.append(AssistantAction(type="show_chart", label="Show Income vs Expenses", params={"period": params.get("period")}))
         return AssistantReply(reply=reply, actions=actions)
 
-    # ---- Budget status for a category ----
+    # ---- Budget status (category) ----
     if intent == "budget_status_category_period":
         cat = _clean_category(params.get("category", ""))
         if not cat:
             raise HTTPException(status_code=400, detail="Could not detect a category.")
-        budget = _pick_budget(db, user.id, cat, period_key, end)
+        budget = _pick_budget(db, user.id, cat, _normalize_period(params.get("period")), start, end)
         if not budget:
             return AssistantReply(reply=f"I couldn’t find a {period_label} budget for '{cat}'.", actions=[])
         spent = (
@@ -263,20 +339,19 @@ def ai_assistant(
                       Expense.created_at <= end)
               .scalar()
         ) or 0.0
-        remaining = (budget.limit_amount or 0.0) - spent
+        remaining = (budget.limit_amount or 0) - spent
         status = "under" if remaining >= 0 else "over"
-        reply = (
-            f"Your {period_label} budget for '{cat}' is {_euro(budget.limit_amount or 0)}. "
-            f"You’ve spent {_euro(spent)}, so you are {status} budget by {_euro(abs(remaining))}."
-        )
+        reply = (f"Your {period_label} budget for '{cat}' is {_euro(budget.limit_amount or 0)}. "
+                 f"You’ve spent {_euro(spent)}, so you are {status} budget by {_euro(abs(remaining))}.")
         actions.append(AssistantAction(
             type="open_budgets",
             label="See budgets",
-            params={"search": cat, "category": cat, "start_date": start.isoformat(), "end_date": end.isoformat()},
+            params={"search": cat, "category": cat,
+                    "start_date": start.isoformat(), "end_date": end.isoformat()},
         ))
         return AssistantReply(reply=reply, actions=actions)
 
-    # ---- Budget status overall ----
+    # ---- Budget status (overall) ----
     if intent == "budget_status_period":
         period_map = {
             "week": "weekly", "last_week": "weekly",
@@ -284,52 +359,58 @@ def ai_assistant(
             "quarter": "quarterly", "last_quarter": "quarterly",
             "half_year": "half-yearly", "last_half_year": "half-yearly",
             "year": "yearly", "last_year": "yearly",
-            "custom": "monthly",
         }
-        target = period_map.get(period_key, "monthly")
+        target = period_map.get(_normalize_period(params.get("period")), "monthly")
         total_budget = (
             db.query(func.coalesce(func.sum(Budget.limit_amount), 0.0))
-              .filter(Budget.user_id == user.id, Budget.period == target, Budget.created_at <= end)
+              .filter(Budget.user_id == user.id,
+                      Budget.period == target,
+                      Budget.created_at <= end)
               .scalar()
         ) or 0.0
         total_spent = (
             db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(Expense.user_id == user.id, Expense.created_at >= start, Expense.created_at <= end)
+              .filter(Expense.user_id == user.id,
+                      Expense.created_at >= start,
+                      Expense.created_at <= end)
               .scalar()
         ) or 0.0
         if total_budget == 0.0:
             return AssistantReply(reply=f"I couldn’t find any {period_label} budgets.", actions=[])
         remaining = total_budget - total_spent
         status = "under" if remaining >= 0 else "over"
-        reply = (
-            f"Your total {period_label} budget is {_euro(total_budget)}. "
-            f"Total spent is {_euro(total_spent)}, so you are {status} budget by {_euro(abs(remaining))}."
-        )
-        actions.append(AssistantAction(type="open_expenses", label="See expenses",
-                                       params={"start_date": start.isoformat(), "end_date": end.isoformat()}))
+        reply = (f"Your total {period_label} budget is {_euro(total_budget)}. "
+                 f"Total spent is {_euro(total_spent)}, so you are {status} budget by {_euro(abs(remaining))}.")
+        actions.append(AssistantAction(
+            type="open_expenses",
+            label="See expenses",
+            params={"start_date": start.isoformat(), "end_date": end.isoformat()},
+        ))
         return AssistantReply(reply=reply, actions=actions)
 
-    # ---- Top category in period ----
+    # ---- Top category ----
     if intent == "top_category_in_period":
         row = (
             db.query(Expense.category, func.sum(Expense.amount).label("total"))
-              .filter(Expense.user_id == user.id, Expense.created_at >= start, Expense.created_at <= end)
+              .filter(Expense.user_id == user.id,
+                      Expense.created_at >= start,
+                      Expense.created_at <= end)
               .group_by(Expense.category)
               .order_by(desc("total"))
               .first()
         )
         if not row:
-            return AssistantReply(reply=f"I couldn't find any expenses in this {period_label}.", actions=[])
+            return AssistantReply(reply=f"I couldn't find any expenses in {period_label}.", actions=[])
         top_cat, total = row[0], float(row[1] or 0.0)
-        reply = f"Your top category this {period_label} is '{top_cat}' at {_euro(total)}."
+        reply = f"Your top category in {period_label} is '{top_cat}' at {_euro(total)}."
         actions.append(AssistantAction(
             type="open_expenses", label="See expenses",
             params={"category": top_cat, "start_date": start.isoformat(), "end_date": end.isoformat()},
         ))
         return AssistantReply(reply=reply, actions=actions)
 
-    # ---- Unknown ----
+    # Unknown
     return AssistantReply(
-        reply="I didn’t quite get that. Try: “How much did I spend on groceries last month?”",
+        reply='I didn’t quite get that. Try: “How much did I spend on groceries last month?”',
         actions=[]
     )
