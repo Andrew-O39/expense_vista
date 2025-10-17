@@ -53,7 +53,12 @@ def suggest_category(
         return {"suggested_category": None, "confidence": 0.0, "rationale": "Empty description"}
 
     # 1) Personal memory (your existing table: MLCategoryMap with fields 'key' and 'category')
-    memory = db.query(MLCategoryMap).filter_by(user_id=user.id, key=desc).first()
+    memory = (
+        db.query(MLCategoryMap)
+        .filter(MLCategoryMap.user_id == user.id,
+                MLCategoryMap.pattern == desc)
+        .first()
+    )
     if memory and memory.category:
         return {
             "suggested_category": memory.category,
@@ -62,7 +67,7 @@ def suggest_category(
         }
 
     # 2) Optional LLM (feature-flagged; off by default)
-    #    We keep the schema/response EXACTLY as you already defined.
+    #    We keep the schema/response EXACTLY as already defined.
     if settings.ai_category_suggestion_enabled and ai_client.enabled():
         user_prompt = (
             f"Transaction text: {payload.description}\n"
@@ -134,30 +139,31 @@ def category_feedback(
     user=Depends(get_current_user),
 ):
     """
-    Store / update a per-user mapping from normalized description to category.
-    Used to improve future category suggestions.
+    Store/update a per-user mapping from normalized description to category.
+    This helps improve future category suggestions.
     """
-    key = norm_key(payload.description)
-    cat = norm_cat(payload.category)
+    desc = norm_key(payload.description)        # normalized description
+    cat = norm_cat(payload.category)            # normalized category
 
-    if not key or not cat:
+    if not desc or not cat:
         raise HTTPException(status_code=400, detail="description and category are required")
 
-    # Upsert into MLCategoryMap
-    row = db.query(MLCategoryMap).filter(
-        MLCategoryMap.user_id == user.id,
-        MLCategoryMap.key == key
-    ).first()
+    # Upsert into MLCategoryMap by (user_id, pattern)
+    row = (
+        db.query(MLCategoryMap)
+          .filter(MLCategoryMap.user_id == user.id,
+                  MLCategoryMap.pattern == desc)
+          .first()
+    )
 
     if row:
-        # update category and bump a simple counter if you track one
         row.category = cat
-        if hasattr(row, "confidence_count") and row.confidence_count is not None:
-            row.confidence_count += 1
+        # confidence counter, bump it here (optional)
+        # if hasattr(row, "confidence_count") and row.confidence_count is not None:
+        #     row.confidence_count += 1
         db.add(row)
     else:
-        row = MLCategoryMap(user_id=user.id, key=key, category=cat)
-        # optionally initialize confidence_count = 1 if you have that column
+        row = MLCategoryMap(user_id=user.id, pattern=desc, category=cat, source="feedback")
         db.add(row)
 
     db.commit()
