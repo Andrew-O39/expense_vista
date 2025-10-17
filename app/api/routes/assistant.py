@@ -9,8 +9,10 @@ from app.api.deps import get_current_user
 from app.db.models.expense import Expense
 from app.db.models.income import Income
 from app.db.models.budget import Budget
+from app.core.config import settings
 from app.schemas.assistant import AssistantMessage, AssistantReply, AssistantAction
 from app.services.nl_interpreter import parse_intent
+from app.services.llm_client import llm_complete_json
 from app.utils.assistant_dates import period_range
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -304,6 +306,26 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         reply = f"So far this quarter, you've spent {_euro(exp)}. We can add a proper budget target check later."
         actions.append(AssistantAction(type="navigate", label="Open Dashboard", params={"route": "/dashboard"}))
         return AssistantReply(reply=reply, actions=actions)
+
+    if intent == "unknown" and settings.ai_assistant_enabled and settings.ai_provider == "openai":
+        try:
+            prompt = (
+                "Extract a JSON object for a finance question.\n"
+                "Allowed intents: ['spend_in_period','spend_in_category_period','budget_status',"
+                "'income_expense_overview_period','top_category_period','total_income_period'].\n"
+                "Params may include: { 'period'?: str, 'category'?: str }.\n"
+                "Respond only with JSON.\n\n"
+                f"User: {payload.message}"
+            )
+            data = llm_complete_json(prompt)
+            new_intent = data.get("intent") or "unknown"
+            new_params = data.get("params") or {}
+            if new_intent != "unknown":
+                intent, params = new_intent, {**params, **new_params}
+                period = params.get("period", period)
+                start, end = period_range(period)
+        except Exception as e:
+            print("LLM fallback failed:", e)
 
     return AssistantReply(
         reply="I didn’t quite get that. For example: “How much did I spend on groceries last month?”",

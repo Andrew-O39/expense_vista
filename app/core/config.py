@@ -30,12 +30,20 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = Field(..., alias="AWS_SECRET_ACCESS_KEY")
     ses_sender: str = Field(..., alias="EMAIL_FROM")  # e.g. no-reply@domain.com
 
-    # AI
+    # ------------------------
+    # AI / OpenAI integration
+    # ------------------------
     ai_category_suggestion_enabled: bool = Field(default=False, alias="AI_CATEGORY_SUGGESTION_ENABLED")
-    ai_provider: str = Field("none", alias="AI_PROVIDER")  # "openai" | "bedrock" | "none"
+    ai_assistant_enabled: bool = Field(default=False, alias="AI_ASSISTANT_ENABLED")
+    ai_provider: str = Field(default="none", alias="AI_PROVIDER")  # "openai" | "bedrock" | "none"
+
+    # Provider-specific keys
     openai_api_key: str | None = Field(None, alias="OPENAI_API_KEY")
     bedrock_region: str | None = Field(None, alias="BEDROCK_REGION")
     bedrock_model_id: str | None = Field(None, alias="BEDROCK_MODEL_ID")  # e.g. "anthropic.claude-3-haiku-20240307-v1:0"
+
+    # Assistant model selection (you can override if needed)
+    ai_model: str = Field(default="gpt-4o-mini", alias="AI_ASSISTANT_MODEL")
 
     # ------------------------
     # Pydantic SettingsConfig
