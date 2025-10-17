@@ -14,6 +14,8 @@ from app.schemas.assistant import AssistantMessage, AssistantReply, AssistantAct
 from app.services.nl_interpreter import parse_intent
 from app.services.llm_client import llm_complete_json
 from app.utils.assistant_dates import period_range
+from typing import Any, Dict
+
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -51,6 +53,58 @@ def _pick_budget(db: Session, user_id: int, category: Optional[str], period_key:
         q = q.filter(func.lower(Budget.category) == _clean_category(category))
     q = q.filter(Budget.created_at <= end).order_by(desc(Budget.created_at))
     return q.first()
+
+
+
+@router.get("/_ai_health")
+def ai_health() -> Dict[str, Any]:
+    """Quick toggle check for AI assistant availability."""
+    return {
+        "assistant_enabled": bool(getattr(settings, "ai_assistant_enabled", False)),
+        "provider": getattr(settings, "ai_provider", "none"),
+        "model": getattr(settings, "ai_model", None),
+        "category_suggestion_enabled": bool(getattr(settings, "ai_category_suggestion_enabled", False)),
+    }
+
+@router.post("/_intent_debug")
+def intent_debug(payload: AssistantMessage):
+    """
+    Debug endpoint to see how messages are interpreted.
+    Tries LLM JSON intent FIRST (if enabled); if that fails/disabled, falls back to regex parser.
+    Returns both the LLM attempt (if any) and the parser result.
+    """
+    msg = (payload.message or "").strip()
+
+    llm_attempt: Dict[str, Any] | None = None
+    llm_used = False
+    if getattr(settings, "ai_assistant_enabled", False) and getattr(settings, "ai_provider", "") == "openai":
+        try:
+            prompt = (
+                "Extract a JSON object for a finance question.\n"
+                "Allowed intents: ['spend_in_period','spend_in_category_period','budget_status_category_period',"
+                "'budget_status_period','income_expense_overview_period','income_in_period','top_category_in_period'].\n"
+                "Params may include: { 'period'?: str, 'category'?: str }.\n"
+                "Respond only with JSON.\n\n"
+                f"User: {msg}"
+            )
+            llm_attempt = llm_complete_json(prompt)
+            llm_used = True
+        except Exception as e:
+            llm_attempt = {"error": str(e)}
+
+    parsed_intent, parsed_params = parse_intent(msg)
+
+    return {
+        "assistant_enabled": bool(getattr(settings, "ai_assistant_enabled", False)),
+        "model": getattr(settings, "ai_model", None),
+        "llm_used": llm_used,
+        "llm_attempt": llm_attempt,              # what the model returned (or error)
+        "parser_result": {
+            "intent": parsed_intent,
+            "params": parsed_params,
+        },
+        "message": msg,
+    }
 
 @router.post("/assistant", response_model=AssistantReply)
 def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=Depends(get_current_user)):
