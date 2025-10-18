@@ -12,7 +12,7 @@ from app.db.models.income import Income
 from app.db.models.budget import Budget
 from app.core.config import settings
 from app.schemas.assistant import AssistantMessage, AssistantReply, AssistantAction
-from app.services.nl_interpreter import parse_intent, PERIOD_ALIASES
+from app.services.nl_interpreter import parse_intent, PERIOD_ALIASES, SUPPORTED_PERIOD_KEYS
 from app.services.llm_client import llm_complete_json
 from app.utils.assistant_dates import period_range
 import re
@@ -20,12 +20,6 @@ from calendar import monthrange
 
 
 router = APIRouter(prefix="/ai", tags=["AI"])
-
-# ---------- Helpers ----------
-# add/keep these imports near the top
-import re
-from datetime import datetime, timezone, timedelta
-from calendar import monthrange
 
 MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4,
@@ -159,10 +153,10 @@ def _parse_iso(dt: str) -> datetime:
     d = datetime.fromisoformat(s)
     return d.astimezone(timezone.utc)
 
-def _normalize_period(p: Optional[str]) -> str:
+def _normalize_period(p: Optional[str]) -> str | None:
     if not p:
-        return "month"
-    p = " ".join((p or "").lower().split())
+        return None
+    p = " ".join((p or "").lower().strip().split())
     return PERIOD_ALIASES.get(p, p)
 
 def _resolve_range(params: dict, original_text: str | None = None) -> tuple[datetime, datetime, str]:
@@ -177,38 +171,57 @@ def _resolve_range(params: dict, original_text: str | None = None) -> tuple[date
     if "start" in params and "end" in params:
         start = _parse_iso(params["start"])
         end = _parse_iso(params["end"])
-        return start, end, _humanize_range(start, end)
+        return start, end, _humanize_range(start, end), None
 
-    # 2) if we DON’T have a named period, try heuristics (since June, Sep & Oct, last 20 days)
+    # 2) use normalized period if valid; otherwise try heuristics
     period_key = _normalize_period(params.get("period"))
-    if not params.get("period") and original_text:
-        r = _heuristic_range_from_text(original_text)
-        if r:
-            s, e = r
-            return s, e, _humanize_range(s, e)
-
-    # 3) named period (default to month if missing)
     if not period_key:
+        # no named period → try heuristics (since June, Sep & Oct, last 20 days)
+        if original_text:
+            r = _heuristic_range_from_text(original_text)
+            if r:
+                s, e = r
+                return s, e, _humanize_range(s, e), None
+        # default month
         period_key = "month"
 
-    s, e = period_range(period_key)
-    return s, e, _humanize_range(s, e, original_period=period_key)
+    # If period_key isn’t one of our supported keys, try heuristics first
+    if period_key not in SUPPORTED_PERIOD_KEYS:
+        if original_text:
+            r = _heuristic_range_from_text(original_text)
+            if r:
+                s, e = r
+                return s, e, _humanize_range(s, e), None
+        # last resort: month
+        period_key = "month"
 
-def _pick_budget(db: Session, user_id: int, category: Optional[str], period_key: str, end_dt: datetime) -> Optional[Budget]:
+    # 3) named period → trusted
+    s, e = period_range(period_key)
+    return s, e, _humanize_range(s, e, original_period=period_key), period_key
+
+def _pick_budget(
+    db: Session,
+    user_id: int,
+    category: Optional[str],
+    period_key: str,
+    start,
+    end,
+) -> Optional[Budget]:
     period_map = {
         "week": "weekly", "last_week": "weekly",
         "month": "monthly", "last_month": "monthly",
         "quarter": "quarterly", "last_quarter": "quarterly",
         "half_year": "half-yearly", "last_half_year": "half-yearly",
         "year": "yearly", "last_year": "yearly",
-        "custom": "monthly",  # reasonable fallback
     }
     target = period_map.get(period_key, "monthly")
 
-    q = (db.query(Budget)
-           .filter(Budget.user_id == user_id,
-                   Budget.period == target,
-                   Budget.created_at <= end_dt))
+    q = (
+        db.query(Budget)
+          .filter(Budget.user_id == user_id,
+                  Budget.period == target,
+                  Budget.created_at <= end)
+    )
     if category:
         q = q.filter(func.lower(Budget.category) == _clean_category(category))
 
@@ -277,8 +290,8 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         # merge, but keep any start/end we might add later:
         params = {**rule_params}
 
-    # 3) Resolve time range + friendly label (critical fix)
-    start, end, period_label = _resolve_range(params, original_text=text)
+    # 3) Resolve time range + friendly label
+    start, end, period_label, period_key = _resolve_range(params, original_text=text)
 
     actions: List[AssistantAction] = []
 
@@ -363,7 +376,7 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         cat = _clean_category(params.get("category", ""))
         if not cat:
             raise HTTPException(status_code=400, detail="Could not detect a category.")
-        budget = _pick_budget(db, user.id, cat, _normalize_period(params.get("period")), start, end)
+        budget = _pick_budget(db, user.id, cat, (period_key or "month"), start, end)
         if not budget:
             return AssistantReply(reply=f"I couldn’t find a {period_label} budget for '{cat}'.", actions=[])
         spent = (
@@ -395,7 +408,7 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
             "half_year": "half-yearly", "last_half_year": "half-yearly",
             "year": "yearly", "last_year": "yearly",
         }
-        target = period_map.get(_normalize_period(params.get("period")), "monthly")
+        target = period_map.get((period_key or "month"), "monthly")
         total_budget = (
             db.query(func.coalesce(func.sum(Budget.limit_amount), 0.0))
               .filter(Budget.user_id == user.id,

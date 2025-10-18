@@ -1,14 +1,53 @@
 import re
 
 PERIOD_ALIASES = {
-    "this week": "week", "current week": "week", "last week": "last_week",
-    "this month": "month", "current month": "month", "last month": "last_month",
-    "this quarter": "quarter", "current quarter": "quarter", "last quarter": "last_quarter",
-    "this half-year": "half_year", "this half year": "half_year",
-    "current half-year": "half_year", "current half year": "half_year",
-    "last half-year": "last_half_year", "last half year": "last_half_year",
-    "this year": "year", "current year": "year", "last year": "last_year",
+    # week
+    "this week": "week",
+    "current week": "week",
+    "this wk": "week",
+    "wk": "week",
+    "last week": "last_week",
+    "prev week": "last_week",
+
+    # month
+    "this month": "month",
+    "current month": "month",
+    "last month": "last_month",
+    "previous month": "last_month",
+
+    # quarter
+    "this quarter": "quarter",
+    "current quarter": "quarter",
+    "last quarter": "last_quarter",
+    "previous quarter": "last_quarter",
+
+    # half-year (many variants)
+    "this half-year": "half_year",
+    "this half year": "half_year",
+    "current half-year": "half_year",
+    "current half year": "half_year",
+    "last half-year": "last_half_year",
+    "last half year": "last_half_year",
+    "previous half-year": "last_half_year",
+    "previous half year": "last_half_year",
+    "h1": "half_year", "first half": "half_year", "first half-year": "half_year",
+    "h2": "half_year", "second half": "half_year", "second half-year": "half_year",
+
+    # year
+    "this year": "year",
+    "current year": "year",
+    "last year": "last_year",
+    "previous year": "last_year",
 }
+
+SUPPORTED_PERIOD_KEYS = {
+    "week","last_week",
+    "month","last_month",
+    "quarter","last_quarter",
+    "half_year","last_half_year",
+    "year","last_year",
+}
+
 PERIOD_PAT = re.compile(
     r"\b(this|current|last)\s+(week|month|quarter|half[-\s]?year|year)\b",
     re.I,
