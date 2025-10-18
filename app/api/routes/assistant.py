@@ -18,6 +18,10 @@ from app.utils.assistant_dates import period_range
 import re
 from calendar import monthrange
 
+import logging
+logger = logging.getLogger("assistant")
+logging.basicConfig(level=logging.INFO)
+
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -317,6 +321,10 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
 
     # 3) Resolve time range + friendly label
     start, end, period_label, period_key = _resolve_range(params, original_text=text)
+    logger.info(
+        "AI assistant resolved range: intent=%s period_label=%s period_key=%s start=%s end=%s",
+        intent, period_label, period_key, start.isoformat(), end.isoformat()
+    )
 
     actions: List[AssistantAction] = []
 
@@ -333,6 +341,8 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
                       Expense.created_at <= end)
               .scalar()
         ) or 0.0
+        logger.info("spend_in_period result: total=%s label=%s start=%s end=%s",
+                    total, period_label, start.isoformat(), end.isoformat())
         reply = f"You spent {_euro(total)} on {cat} in {period_label}."
         actions.append(AssistantAction(
             type="open_expenses",
@@ -351,6 +361,8 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
                       Expense.created_at <= end)
               .scalar()
         ) or 0.0
+        logger.info("spend_in_period result: total=%s label=%s start=%s end=%s",
+                    total, period_label, start.isoformat(), end.isoformat())
         reply = f"You spent {_euro(total)} in {period_label}."
         actions.append(AssistantAction(
             type="open_expenses",
