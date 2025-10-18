@@ -159,43 +159,46 @@ def _normalize_period(p: Optional[str]) -> str | None:
     p = " ".join((p or "").lower().strip().split())
     return PERIOD_ALIASES.get(p, p)
 
-def _resolve_range(params: dict, original_text: str | None = None) -> tuple[datetime, datetime, str]:
+def _resolve_range(
+    params: dict,
+    original_text: str | None = None
+) -> tuple[datetime, datetime, str, Optional[str]]:
     """
     Priority:
       1) explicit start/end in params
       2) heuristic parse from message text
       3) named period → period_range()
-    Returns (start, end, period_label)
+    Returns (start, end, period_label, normalized_period_key|None)
     """
     # 1) explicit start/end win
     if "start" in params and "end" in params:
         start = _parse_iso(params["start"])
-        end = _parse_iso(params["end"])
+        end   = _parse_iso(params["end"])
         return start, end, _humanize_range(start, end), None
 
-    # 2) use normalized period if valid; otherwise try heuristics
+    # 2) normalize period if present
     period_key = _normalize_period(params.get("period"))
     if not period_key:
-        # no named period → try heuristics (since June, Sep & Oct, last 20 days)
+        # No named period → try heuristics
         if original_text:
             r = _heuristic_range_from_text(original_text)
             if r:
                 s, e = r
                 return s, e, _humanize_range(s, e), None
-        # default month
+        # default to this month
         period_key = "month"
 
-    # If period_key isn’t one of our supported keys, try heuristics first
+    # If we got a period string but it’s not one of our supported keys, try heuristics first
     if period_key not in SUPPORTED_PERIOD_KEYS:
         if original_text:
             r = _heuristic_range_from_text(original_text)
             if r:
                 s, e = r
                 return s, e, _humanize_range(s, e), None
-        # last resort: month
+        # last resort: treat as this month
         period_key = "month"
 
-    # 3) named period → trusted
+    # 3) trusted, supported key → use period_range
     s, e = period_range(period_key)
     return s, e, _humanize_range(s, e, original_period=period_key), period_key
 
@@ -255,6 +258,28 @@ def ai_intent_debug(payload: dict):
     )
     parsed = llm_complete_json(prompt)
     return {"enabled": True, "model": settings.ai_model or "gpt-4o-mini", "parsed": parsed}
+
+@router.post("/_range_debug")
+def ai_range_debug(payload: dict):
+    msg = (payload.get("message") or "").strip()
+    if not msg:
+        raise HTTPException(400, "message is required")
+
+    # simulate your normal flow just enough to build params
+    intent, params = parse_intent(msg)
+    # (Pretend the LLM added start/end—skip that here)
+
+    start, end, label, key = _resolve_range(params, original_text=msg)
+    return {
+        "intent": intent,
+        "params_in": params,
+        "resolved": {
+            "period_key": key,
+            "label": label,
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+        }
+    }
 
 # ---------- Assistant endpoint (AI-first, rules fallback) ----------
 
