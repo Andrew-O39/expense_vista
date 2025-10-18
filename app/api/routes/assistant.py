@@ -45,19 +45,38 @@ def _month_range(year: int, month: int) -> tuple[datetime, datetime]:
     end = _end_of_day(datetime(year, month, last_day, tzinfo=timezone.utc))
     return start, end
 
+def _friendly_period_label(period_key: str) -> str:
+    """
+    Map internal period keys to human-friendly labels.
+    """
+    mapping = {
+        "week": "this week",
+        "last_week": "last week",
+        "month": "this month",
+        "last_month": "last month",
+        "quarter": "this quarter",
+        "last_quarter": "last quarter",
+        "half_year": "this half-year",
+        "last_half_year": "last half-year",
+        "year": "this year",
+        "last_year": "last year",
+    }
+    return mapping.get(period_key, period_key.replace("_", " "))
+
 def _humanize_range(start: datetime, end: datetime, original_period: str | None = None) -> str:
-    # if we got a named period like "last_quarter", prefer that
     if original_period in {
-        "week","last_week","month","last_month","quarter","last_quarter",
-        "half_year","last_half_year","year","last_year"
+        "week","last_week","month","last_month",
+        "quarter","last_quarter","half_year","last_half_year",
+        "year","last_year",
     }:
-        return original_period.replace("_", " ")
-    # otherwise, humanize the concrete dates
+        return _friendly_period_label(original_period)
+
+    # Otherwise, humanize dates (for “since June”, “September and October”, etc.)
     if start.year == end.year and start.month == end.month:
-        return start.strftime("%B %Y")  # e.g. "September 2025"
+        return start.strftime("%B %Y")                # e.g. "September 2025"
     if start.year == end.year:
-        return f"{start.strftime('%b')}–{end.strftime('%b %Y')}"  # "Sep–Oct 2025"
-    return f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}"  # "Dec 2024 – Jan 2025"
+        return f"{start.strftime('%b')}–{end.strftime('%b %Y')}"   # "Sep–Oct 2025"
+    return f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}" # "Dec 2024 – Jan 2025"
 
 def _find_months_in_text(text: str) -> list[tuple[int, int]]:
     """
@@ -160,17 +179,20 @@ def _resolve_range(params: dict, original_text: str | None = None) -> tuple[date
         end = _parse_iso(params["end"])
         return start, end, _humanize_range(start, end)
 
-    # 2) try month/since/last-N-days heuristics from the user text
-    if original_text:
+    # 2) if we DON’T have a named period, try heuristics (since June, Sep & Oct, last 20 days)
+    period_key = _normalize_period(params.get("period"))
+    if not params.get("period") and original_text:
         r = _heuristic_range_from_text(original_text)
         if r:
             s, e = r
             return s, e, _humanize_range(s, e)
 
-    # 3) named period (normalize aliases)
-    period = _normalize_period(params.get("period"))
-    s, e = period_range(period)
-    return s, e, period.replace("_", " ")
+    # 3) named period (default to month if missing)
+    if not period_key:
+        period_key = "month"
+
+    s, e = period_range(period_key)
+    return s, e, _humanize_range(s, e, original_period=period_key)
 
 def _pick_budget(db: Session, user_id: int, category: Optional[str], period_key: str, end_dt: datetime) -> Optional[Budget]:
     period_map = {
