@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import List, Optional
 from unicodedata import normalize as u_norm
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.db.session import get_db
 from app.api.deps import get_current_user
@@ -22,6 +22,11 @@ from calendar import monthrange
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 # ---------- Helpers ----------
+# add/keep these imports near the top
+import re
+from datetime import datetime, timezone, timedelta
+from calendar import monthrange
+
 MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4,
     "may": 5, "june": 6, "july": 7, "august": 8,
@@ -29,7 +34,7 @@ MONTHS = {
 }
 
 def _month_name_to_num(name: str) -> int | None:
-    return MONTHS.get(name.strip().lower())
+    return MONTHS.get((name or "").strip().lower())
 
 def _end_of_day(dt: datetime) -> datetime:
     return dt.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -37,47 +42,57 @@ def _end_of_day(dt: datetime) -> datetime:
 def _month_range(year: int, month: int) -> tuple[datetime, datetime]:
     start = datetime(year, month, 1, tzinfo=timezone.utc)
     last_day = monthrange(year, month)[1]
-    end = datetime(year, month, last_day, tzinfo=timezone.utc)
-    end = _end_of_day(end)
+    end = _end_of_day(datetime(year, month, last_day, tzinfo=timezone.utc))
     return start, end
 
-def _humanize_range(start: datetime, end: datetime, original: str | None = None) -> str:
-    """Make a friendly label for replies."""
-    if original in {"week","last_week","month","last_month","quarter","last_quarter",
-                    "half_year","last_half_year","year","last_year"}:
-        return original.replace("_", " ")
-    # If explicit dates:
+def _humanize_range(start: datetime, end: datetime, original_period: str | None = None) -> str:
+    # if we got a named period like "last_quarter", prefer that
+    if original_period in {
+        "week","last_week","month","last_month","quarter","last_quarter",
+        "half_year","last_half_year","year","last_year"
+    }:
+        return original_period.replace("_", " ")
+    # otherwise, humanize the concrete dates
     if start.year == end.year and start.month == end.month:
-        # e.g., “September 2025”
-        return f"{start.strftime('%B %Y')}"
-    # cross-month in same year → “Sep–Oct 2025”
+        return start.strftime("%B %Y")  # e.g. "September 2025"
     if start.year == end.year:
-        return f"{start.strftime('%b')}–{end.strftime('%b %Y')}"
-    # cross-year
-    return f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}"
+        return f"{start.strftime('%b')}–{end.strftime('%b %Y')}"  # "Sep–Oct 2025"
+    return f"{start.strftime('%b %Y')} – {end.strftime('%b %Y')}"  # "Dec 2024 – Jan 2025"
+
+def _find_months_in_text(text: str) -> list[tuple[int, int]]:
+    """
+    Return list of (year, month) seen in the text, in order.
+    Handles 'september', 'september 2024', etc. Scans all tokens, not just the first.
+    """
+    t = " ".join((text or "").lower().split())
+    now = datetime.now(timezone.utc)
+    results: list[tuple[int,int]] = []
+    for m in re.finditer(r"\b([a-z]+)(?:\s+(\d{4}))?\b", t):
+        name, y = m.group(1), m.group(2)
+        mn = _month_name_to_num(name)
+        if not mn:
+            continue
+        year = int(y) if y else now.year
+        results.append((year, mn))
+    return results
 
 def _heuristic_range_from_text(text: str) -> tuple[datetime, datetime] | None:
     """
-    Fallback parser for:
-      - 'since <Month>' or 'since <Month> <Year>'
-      - '<Month>' (assumes current year)
-      - '<Month> and <Month>' (assumes current year)
-      - 'last <N> days'
-    Returns (start, end) in UTC or None if not matched.
+    Fallback parser for: 'since June', 'September', 'September and October', 'last 20 days', etc.
     """
     t = " ".join((text or "").lower().split())
     now = datetime.now(timezone.utc)
 
     # last N days
-    m = re.search(r"last\s+(\d{1,3})\s+days?", t)
+    m = re.search(r"\blast\s+(\d{1,3})\s+days?\b", t)
     if m:
-        n = int(m.group(1))
-        start = (now - timedelta(days=n-1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        n = max(1, int(m.group(1)))
+        start = (now - timedelta(days=n - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
         end = _end_of_day(now)
         return start, end
 
     # since <month> [year]
-    m = re.search(r"since\s+([a-z]+)(?:\s+(\d{4}))?", t)
+    m = re.search(r"\bsince\s+([a-z]+)(?:\s+(\d{4}))?\b", t)
     if m:
         mn = _month_name_to_num(m.group(1))
         if mn:
@@ -86,7 +101,7 @@ def _heuristic_range_from_text(text: str) -> tuple[datetime, datetime] | None:
             end = _end_of_day(now)
             return start, end
 
-    # "<Month> and <Month>" (same year)
+    # "<Month> and <Month>" (same year unless explicit year provided for both—rare)
     m = re.search(r"\b([a-z]+)\s+and\s+([a-z]+)\b", t)
     if m:
         m1, m2 = _month_name_to_num(m.group(1)), _month_name_to_num(m.group(2))
@@ -96,13 +111,11 @@ def _heuristic_range_from_text(text: str) -> tuple[datetime, datetime] | None:
             s2, e2 = _month_range(y, m2)
             return (min(s1, s2), max(e1, e2))
 
-    # single <Month> [Year]
-    m = re.search(r"\b([a-z]+)\s*(\d{4})?\b", t)
-    if m:
-        mn = _month_name_to_num(m.group(1))
-        if mn:
-            y = int(m.group(2)) if m.group(2) else now.year
-            return _month_range(y, mn)
+    # Any single month mention anywhere
+    months = _find_months_in_text(t)
+    if months:
+        y, mn = months[0]
+        return _month_range(y, mn)
 
     return None
 
@@ -141,13 +154,13 @@ def _resolve_range(params: dict, original_text: str | None = None) -> tuple[date
       3) named period → period_range()
     Returns (start, end, period_label)
     """
-    # 1) explicit
+    # 1) explicit start/end win
     if "start" in params and "end" in params:
         start = _parse_iso(params["start"])
-        end   = _parse_iso(params["end"])
+        end = _parse_iso(params["end"])
         return start, end, _humanize_range(start, end)
 
-    # 2) heuristics
+    # 2) try month/since/last-N-days heuristics from the user text
     if original_text:
         r = _heuristic_range_from_text(original_text)
         if r:
