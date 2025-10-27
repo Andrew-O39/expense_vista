@@ -57,6 +57,9 @@ EXPENSE_WORDS = {"spend","spent","expense","expenses","cost","costs"}
 INCOME_WORDS  = {"income","incomes","earnings","revenue"}
 BUDGET_WORDS  = {"budget","budgets","over","under","remaining","left","status","on track","track"}
 TOP_WORDS     = {"top","biggest","largest","most"}
+EXTREME_WORDS_HIGH = {"highest","largest","biggest","top","max","maximum"}
+EXTREME_WORDS_LOW  = {"lowest","smallest","min","minimum"}
+
 
 STOP_WORDS = {
     "how","what","which","when","where","why","is","are","was","were","did","do","does","me","my",
@@ -151,6 +154,12 @@ def parse_intent(message: str):
     # “top category …”
     if any(w in t for w in TOP_WORDS) and ("category" in t or "categories" in t or any(w in t for w in EXPENSE_WORDS)):
         return "top_category_in_period", {"period": period or "month"}
+
+    # Highest/lowest budget this period
+    if "budget" in t and any(w in t for w in EXTREME_WORDS_HIGH):
+        return "highest_budget_period", {"period": period or "year"}
+    if "budget" in t and any(w in t for w in EXTREME_WORDS_LOW):
+        return "lowest_budget_period", {"period": period or "year"}
 
     # generic spend
     if any(w in t for w in EXPENSE_WORDS):

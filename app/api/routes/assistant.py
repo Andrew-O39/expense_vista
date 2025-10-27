@@ -536,6 +536,61 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         ))
         return AssistantReply(reply=reply, actions=actions)
 
+    # ---- Highest budget in a period ----
+    if intent == "highest_budget_period":
+        # Map to Budget.period
+        period_map = {
+            "week": "weekly", "last_week": "weekly",
+            "month": "monthly", "last_month": "monthly",
+            "quarter": "quarterly", "last_quarter": "quarterly",
+            "half_year": "half-yearly", "last_half_year": "half-yearly",
+            "year": "yearly", "last_year": "yearly",
+        }
+        target = period_map.get((period_key or _normalize_period(params.get("period")) or "year"), "yearly")
+        row = (
+            db.query(Budget.category, Budget.limit_amount)
+            .filter(Budget.user_id == user.id,
+                    Budget.period == target,
+                    Budget.created_at <= end)
+            .order_by(desc(Budget.limit_amount))
+            .first()
+        )
+        if not row:
+            return AssistantReply(reply=f"I couldn’t find any {period_label} budgets.", actions=[])
+        cat, amt = row[0], float(row[1] or 0.0)
+        reply = f"Your highest {period_label} budget is '{cat}' at {_euro(amt)}."
+        actions.append(AssistantAction(type="open_budgets", label="See budgets",
+                                       params={"category": cat, "start_date": start.isoformat(),
+                                               "end_date": end.isoformat()}))
+        return AssistantReply(reply=reply, actions=actions)
+
+    # ---- Lowest budget in a period ----
+    if intent == "lowest_budget_period":
+        period_map = {
+            "week": "weekly", "last_week": "weekly",
+            "month": "monthly", "last_month": "monthly",
+            "quarter": "quarterly", "last_quarter": "quarterly",
+            "half_year": "half-yearly", "last_half_year": "half-yearly",
+            "year": "yearly", "last_year": "yearly",
+        }
+        target = period_map.get((period_key or _normalize_period(params.get("period")) or "year"), "yearly")
+        row = (
+            db.query(Budget.category, Budget.limit_amount)
+            .filter(Budget.user_id == user.id,
+                    Budget.period == target,
+                    Budget.created_at <= end)
+            .order_by(Budget.limit_amount.asc())
+            .first()
+        )
+        if not row:
+            return AssistantReply(reply=f"I couldn’t find any {period_label} budgets.", actions=[])
+        cat, amt = row[0], float(row[1] or 0.0)
+        reply = f"Your lowest {period_label} budget is '{cat}' at {_euro(amt)}."
+        actions.append(AssistantAction(type="open_budgets", label="See budgets",
+                                       params={"category": cat, "start_date": start.isoformat(),
+                                               "end_date": end.isoformat()}))
+        return AssistantReply(reply=reply, actions=actions)
+
     # ---- Top category ----
     if intent == "top_category_in_period":
         row = (
