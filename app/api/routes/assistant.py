@@ -66,6 +66,11 @@ MONTH_NAME_RE = re.compile(
     re.I
 )
 
+RELATIVE_RE = re.compile(
+    r"\b(this|current|last|previous)\s+(week|month|quarter|half[-\s]?year|year)\b",
+    re.I,
+)
+
 def _text_mentions_month(text: str) -> bool:
     return bool(MONTH_NAME_RE.search((text or "")))
 
@@ -192,55 +197,47 @@ def _normalize_period(p: Optional[str]) -> str | None:
 def _resolve_range(params: dict, original_text: str | None = None) -> tuple[datetime, datetime, str, str | None]:
     """
     Priority:
-      1) explicit start/end in params (unless user mentioned a month with no year → prefer heuristics)
-      2) hint period from raw text (week/month/etc.)
-      3) normalized period from LLM/rules
-      4) heuristics (“since June”, “Sep and Oct”, “last 20 days”)
-      5) default: month
+      1) For RELATIVE phrases in the text, trust our period_range — ignore LLM start/end.
+      2) If explicit start/end and NOT a relative phrase with no month name → use them.
+      3) If no period, try heuristics (“since June”, “Sep & Oct”, “last 20 days”).
+      4) Otherwise normalize period and use period_range.
     Returns (start, end, period_label, period_key_or_None)
     """
-    # 1) explicit start/end provided by LLM/rules
+    raw = (original_text or "").lower().strip()
+
+    # If user used a relative phrase, force canonical period handling.
+    if RELATIVE_RE.search(raw):
+        # derive normalized period from text first
+        hint_key = _hint_period_from_text(raw) if '_hint_period_from_text' in globals() else None
+        period_key = hint_key or _normalize_period(params.get("period")) or "month"
+        s, e = period_range(period_key)
+        return s, e, _humanize_range(s, e, original_period=period_key), period_key
+
+    # If model supplied explicit dates and the text *named a month without a year*,
+    # prefer our heuristics (avoid model inventing the year).
     if "start" in params and "end" in params:
-        # If user mentioned a month but NOT a year, don't trust LLM's year.
-        # Prefer our heuristics so September => current year's September.
-        if original_text and _text_mentions_month(original_text) and not _text_mentions_year(original_text):
-            r = _heuristic_range_from_text(original_text)
+        if _text_mentions_month(raw) and not _text_mentions_year(raw):
+            r = _heuristic_range_from_text(raw)
             if r:
                 s, e = r
                 return s, e, _humanize_range(s, e), None
-
+        # otherwise trust explicit dates
         start = _parse_iso(params["start"])
         end   = _parse_iso(params["end"])
         return start, end, _humanize_range(start, end), None
 
-    # 2) derive a hint from raw text (e.g., "this week", "last month", "this quarter")
-    hint_key = _hint_period_from_text(original_text or "") if original_text else None
+    # No explicit dates — try heuristics for free-form ranges first
+    r = _heuristic_range_from_text(raw)
+    if r:
+        s, e = r
+        return s, e, _humanize_range(s, e), None
 
-    # 3) normalized period from LLM/rules
-    period_key = _normalize_period(params.get("period"))
-
-    # Let the explicit hint from text override any vague/incorrect period from LLM
-    if hint_key:
-        period_key = hint_key
-
-    # 4) if we still don't have a named period, try free-form heuristics (since June, Sep & Oct, last 20 days)
-    if not period_key:
-        r = _heuristic_range_from_text(original_text or "")
-        if r:
-            s, e = r
-            return s, e, _humanize_range(s, e), None
-        # fall back to month
-        period_key = "month"
-
-    # 5) If the period_key isn't one we officially support, try heuristics before falling back
+    # Fall back to normalized named period (default month)
+    period_key = _normalize_period(params.get("period")) or "month"
     if period_key not in SUPPORTED_PERIOD_KEYS:
-        r = _heuristic_range_from_text(original_text or "")
-        if r:
-            s, e = r
-            return s, e, _humanize_range(s, e), None
+        # last resort: default month
         period_key = "month"
 
-    # 6) Named period → authoritative range
     s, e = period_range(period_key)
     return s, e, _humanize_range(s, e, original_period=period_key), period_key
 
