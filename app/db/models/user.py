@@ -6,7 +6,7 @@ Each user can have multiple expenses, budgets, and alert logs.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy import Column, Boolean, Integer, String, DateTime, func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 
@@ -31,6 +31,9 @@ class User(Base):
         server_default=func.now(),
         nullable=False,
     )
+    is_verified = Column(Boolean, nullable=False, default=False)
+    verification_token_hash = Column(String(128), nullable=True, index=True)
+    verification_token_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     expenses = relationship("Expense", back_populates="owner", cascade="all, delete")
     budgets = relationship("Budget", back_populates="owner", cascade="all, delete")

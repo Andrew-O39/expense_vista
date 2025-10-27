@@ -1,36 +1,50 @@
-# ExpenseVista
+# 💰 ExpenseVista
 
-**ExpenseVista** is a personal finance web application that allows users to create budgets, log daily expenses, track incomes, and receive email alerts when their spending approaches or exceeds their set limits. The application is designed to help users stay in control of their finances through proactive and timely notifications.
+**ExpenseVista** is a personal finance web application that helps users **plan budgets**, **track expenses and income**, and **analyze financial health** over time.  
+It also includes an **AI-powered assistant** that understands natural-language questions like:  
+> “How much did I spend this week?”  
+> “Am I over budget on transport this month?”  
+> “What’s my highest budget this year?”
 
-## Features
+---
 
-- Users can register and securely log in to their accounts using JWT-based authentication.
-- Budgets can be created for different categories and tracked over specific time periods.
-- Users are able to log individual expenses and assign them to specific categories.
-- **Income tracking:** record income entries (salary, freelance, investments, etc.), categorized as active or passive.
-- The application provides summaries of both spending and income by category and time period.
-- **Financial overview dashboard:** shows total income, total expenses, and net balance, with breakdowns over time.
-- Automated email alerts are sent when spending reaches 50% of the budget, nears the limit (80–99%), or exceeds the limit (100%+).
-- Email notifications are designed using a styled HTML template with clear and friendly formatting.
-- SendGrid integration ensures reliable delivery of notification emails.
-- Emails include personalized content such as the user’s username, current category, and budget period, as well as the current year.
+## 🚀 Features
 
-## Tech Stack
+- 🔐 **JWT-based authentication** for secure login and registration.  
+- 🧾 **Budgets by category and period** (weekly, monthly, quarterly, yearly, etc.).  
+- 💸 **Expense tracking** with detailed categories and time filters.  
+- 💰 **Income tracking** (salary, freelance, investments, passive income).  
+- 📊 **Dashboard overview:** income, expenses, and net balance with trend summaries.  
+- ✉️ **Automated budget alerts via AWS SES**:
+  - 50% → Budget halfway used  
+  - 80–99% → Approaching limit  
+  - 100%+ → Exceeded budget  
+- 🎨 **Clean HTML email templates** with category, username, and period context.  
+- 🤖 **AI Financial Assistant** for natural-language queries:
+  - Understands “since June”, “this quarter”, “last 20 days”, etc.
+  - Returns summaries, category breakdowns, and over/under-budget insights.  
 
-- **Backend Framework:** FastAPI
-- **Database:** PostgreSQL (via SQLAlchemy ORM)
-- **Templating Engine:** Jinja2
-- **Email Service:** SendGrid API
-- **Authentication:** OAuth2 with JWT Tokens
-- **Data Validation:** Pydantic
-- **Migrations:** Alembic
-- **Income & Finance Tracking:** Added support for income records and net balance calculations
+---
 
-## Getting Started
+## 🧠 Tech Stack
 
-To run this project locally, follow the steps below:
+| Layer | Technology |
+|:------|:------------|
+| **Backend Framework** | FastAPI |
+| **Database** | PostgreSQL (SQLAlchemy ORM) |
+| **Email Service** | AWS SES (Simple Email Service) |
+| **Auth** | OAuth2 + JWT |
+| **Templating** | Jinja2 |
+| **Data Validation** | Pydantic |
+| **Migrations** | Alembic |
+| **AI Assistant** | OpenAI GPT model (`gpt-4o-mini`) with rules fallback |
+| **Date Handling** | Custom deterministic period logic (`assistant_dates.py`) |
 
-1. **Clone the repository**
+---
+
+## ⚙️ Getting Started
+
+### 1️⃣ Clone the Repository
 
    ```
    git clone https://github.com/Andrew-O39/expense_vista.git
@@ -48,7 +62,7 @@ To run this project locally, follow the steps below:
 4.	**Configure environment variables**  
     Create a .env file in the root directory with the following keys:
    ```
-# Security settings
+# Security
 SECRET_KEY=your-secret-key
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
@@ -56,9 +70,17 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 # Database
 DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/expense_tracker_db
 
-# Email (SendGrid)
+# Email (AWS SES)
 MAIL_FROM=your-email@example.com
-SENDGRID_API_KEY=your-sendgrid-api-key
+AWS_SES_ACCESS_KEY_ID=your-access-key-id
+AWS_SES_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_SES_REGION=us-east-1
+
+# AI Assistant
+AI_ASSISTANT_ENABLED=true
+AI_PROVIDER=openai
+OPENAI_API_KEY=your-openai-api-key
+AI_MODEL=gpt-4o-mini
    ```
 5. **Run database migration**
      ```
@@ -66,7 +88,7 @@ SENDGRID_API_KEY=your-sendgrid-api-key
    ```
 6. **Start the development server**
     ```
-   uvicorn app.main:app --reload
+   uvicorn main:app --reload
    ```
    
 Once the server is running, you can access the interactive API docs at:
@@ -83,6 +105,7 @@ http://localhost:8000/docs
 │   │   ├── __init__.py
 │   │   └── routes/               ← Endpoints
 │   │       ├── __init__.py
+            ├── assistant.py      ← AI assistant endpoints
 │   │       ├── auth.py
 │   │       ├── budget.py
 │   │       ├── expense.py
@@ -90,17 +113,17 @@ http://localhost:8000/docs
 │   │       ├── alerts.py
 │   │       └── summary.py         ← Includes income + grouping logic
 │   │
-│   ├── core/
+│   ├── core/                      ← Configuration + security
 │   │   ├── __init__.py
 │   │   ├── config.py              ← Pydantic Settings
 │   │   └── security.py            ← JWT + password hashing
 │   │
-│   ├── db/
+│   ├── db/                        ← Database + ORM models
 │   │   ├── __init__.py
 │   │   ├── base.py                ← Declarative Base
 │   │   ├── base_class.py          ← Imports all models for Alembic
 │   │   ├── session.py             ← Engine + get_db()
-│   │   └── models/             ← Income ORM model
+│   │   └── models/                ← Income ORM model
 │   │       ├── __init__.py
 │   │       ├── user.py
 │   │       ├── expense.py
@@ -108,7 +131,7 @@ http://localhost:8000/docs
 │   │       ├── alert_log.py
 │   │       └── income.py          
 │   │
-│   ├── crud/                    ← CRUD operations
+│   ├── crud/                      ← CRUD operations
 │   │   ├── __init__.py
 │   │   ├── user.py
 │   │   ├── budget.py
@@ -116,7 +139,7 @@ http://localhost:8000/docs
 │   │   ├── income.py        
 │   │   └── alert.py
 │   │
-│   ├── schemas/                 ← Pydantic schemas
+│   ├── schemas/                   ← Pydantic schemas
 │   │   ├── __init__.py
 │   │   ├── user.py
 │   │   ├── expense.py
@@ -125,13 +148,15 @@ http://localhost:8000/docs
 │   │   └── income.py             
 │   │
 │   ├── services/
-│   │   ├── __init__.py
-│   │   ├── email_service.py
-│   │   └── alerts_service.py
+│   │   ├── email_service.py         ← AWS SES integration
+│   │   ├── alerts_service.py
+│   │   ├── llm_client.py            ← OpenAI API interface
+│   │   └── nl_interpreter.py        ← Rule-based intent parser
 │   │
 │   └── utils/
 │       ├── __init__.py
-│       └── date_utils.py          ← Handles date range logic
+        └── assistant_dates.py       ← Deterministic period resolution
+│       └── date_utils.py            ← Handles date range logic
 │
 ├── alembic/
 │   ├── versions/
@@ -141,9 +166,11 @@ http://localhost:8000/docs
 │
 ├── .env
 ├── requirements.txt
-├── main.py                        ← Includes all routers + docs metadata
-├── CHANGELOG.md                   ← To be updated next
+├── main.py                          ← Includes all routers + docs metadata / ← FastAPI entrypoint
+├── CHANGELOG.md                     ← To be updated next
 ├── README.md
+├── docs/
+│   └── assistant_behavior.md        ← AI Assistant documentation + flowchart
 └── run.sh / Procfile (optional for deployment)
    ```
 ## Roadmap
@@ -158,11 +185,52 @@ http://localhost:8000/docs
 
 ## License
 
-This project is licensed under the MIT License.
+MIT License © 2025 Andrew O.
 
 ## Acknowledgements
-	•FastAPI for the excellent web framework.
-	•SendGrid for the robust and developer-friendly email service.
-	•Jinja2 for templating
-	•Special thanks to the open-source community for libraries and tools that power this project.
+    •	FastAPI — The excellent Python web framework.
+	•	AWS SES — Reliable and scalable email delivery.
+	•	Jinja2 — Clean HTML templating.
+	•	OpenAI — For the natural language understanding powering the AI assistant.
+	•	❤️ The open-source community for tools and libraries that make this project possible.
 
+# 🧩 How to Extend the Assistant
+
+Developers can easily add new AI or rule-based intents in just a few steps.
+
+🪄 Example: Add savings_overview_period
+
+1️⃣ Define intent logic
+
+In routes/assistant.py, add a new if intent == "savings_overview_period": block:
+
+```
+if intent == "savings_overview_period":
+    income_ts = func.coalesce(Income.received_at, Income.created_at)
+    total_income = (
+        db.query(func.coalesce(func.sum(Income.amount), 0.0))
+          .filter(Income.user_id == user.id, income_ts >= start, income_ts <= end)
+          .scalar()
+    ) or 0.0
+    total_expense = (
+        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+          .filter(Expense.user_id == user.id, Expense.created_at >= start, Expense.created_at <= end)
+          .scalar()
+    ) or 0.0
+    savings = total_income - total_expense
+    reply = f"Your savings in {period_label} is {_euro(savings)}."
+    return AssistantReply(reply=reply)
+```
+2️⃣ Register the new intent
+
+Add it to the allowed intents list in:\
+	•	/ai/_intent_debug prompt \
+	•	and /ai/assistant LLM prompt block.
+
+3️⃣ Add rule fallback
+
+In nl_interpreter.py, add a detection rule:
+```
+if "saving" in t or "savings" in t:
+    return "savings_overview_period", {"period": period or "month"}
+```
