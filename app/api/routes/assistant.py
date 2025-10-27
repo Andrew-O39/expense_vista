@@ -125,9 +125,7 @@ def _find_months_in_text(text: str) -> list[tuple[int, int]]:
     return results
 
 def _heuristic_range_from_text(text: str) -> tuple[datetime, datetime] | None:
-    """
-    Fallback parser for: 'since June', 'September', 'September and October', 'last 20 days', etc.
-    """
+    """Extended free-form date range parser."""
     t = " ".join((text or "").lower().split())
     now = datetime.now(timezone.utc)
 
@@ -139,6 +137,47 @@ def _heuristic_range_from_text(text: str) -> tuple[datetime, datetime] | None:
         end = _end_of_day(now)
         return start, end
 
+    # between X and Y
+    m = re.search(r"\bbetween\s+([a-z]+)(?:\s+(\d{4}))?\s+and\s+([a-z]+)(?:\s+(\d{4}))?\b", t)
+    if m:
+        m1, y1, m2, y2 = m.group(1), m.group(2), m.group(3), m.group(4)
+        mn1, mn2 = _month_name_to_num(m1), _month_name_to_num(m2)
+        if mn1 and mn2:
+            y_1 = int(y1) if y1 else now.year
+            y_2 = int(y2) if y2 else (y_1 if y1 else now.year)
+            s1, e1 = _month_range(y_1, mn1)
+            s2, e2 = _month_range(y_2, mn2)
+            return min(s1, s2), max(e1, e2)
+
+    # from X to|until|till Y (Y can be now/today or a month)
+    m = re.search(r"\bfrom\s+([a-z]+)(?:\s+(\d{4}))?\s+(?:to|until|till)\s+(now|today|[a-z]+(?:\s+\d{4})?)\b", t)
+    if m:
+        m_from, y_from, to_part = m.group(1), m.group(2), m.group(3)
+        mn_from = _month_name_to_num(m_from)
+        if mn_from:
+            y_start = int(y_from) if y_from else now.year
+            start = datetime(y_start, mn_from, 1, tzinfo=timezone.utc)
+            if to_part in {"now", "today"}:
+                end = _end_of_day(now); return start, end
+            mm = re.match(r"([a-z]+)(?:\s+(\d{4}))?$", to_part)
+            if mm:
+                m_to, y_to = mm.group(1), mm.group(2)
+                mn_to = _month_name_to_num(m_to)
+                if mn_to:
+                    y_end = int(y_to) if y_to else now.year
+                    _, end = _month_range(y_end, mn_to)
+                    return start, end
+
+    # "<Month> and <Month>" (same year)
+    m = re.search(r"\b([a-z]+)\s+and\s+([a-z]+)\b", t)
+    if m:
+        m1, m2 = _month_name_to_num(m.group(1)), _month_name_to_num(m.group(2))
+        if m1 and m2:
+            y = now.year
+            s1, e1 = _month_range(y, m1)
+            s2, e2 = _month_range(y, m2)
+            return min(s1, s2), max(e1, e2)
+
     # since <month> [year]
     m = re.search(r"\bsince\s+([a-z]+)(?:\s+(\d{4}))?\b", t)
     if m:
@@ -149,23 +188,14 @@ def _heuristic_range_from_text(text: str) -> tuple[datetime, datetime] | None:
             end = _end_of_day(now)
             return start, end
 
-    # "<Month> and <Month>" (same year unless explicit year provided for both—rare)
-    m = re.search(r"\b([a-z]+)\s+and\s+([a-z]+)\b", t)
-    if m:
-        m1, m2 = _month_name_to_num(m.group(1)), _month_name_to_num(m.group(2))
-        if m1 and m2:
-            y = now.year
-            s1, e1 = _month_range(y, m1)
-            s2, e2 = _month_range(y, m2)
-            return (min(s1, s2), max(e1, e2))
-
-    # Any single month mention anywhere
+    # single month anywhere
     months = _find_months_in_text(t)
     if months:
         y, mn = months[0]
         return _month_range(y, mn)
 
     return None
+
 
 def _euro(n: float) -> str:
     return f"€{(n or 0):.2f}"
@@ -199,22 +229,21 @@ def _resolve_range(params: dict, original_text: str | None = None) -> tuple[date
     Priority:
       1) For RELATIVE phrases in the text, trust our period_range — ignore LLM start/end.
       2) If explicit start/end and NOT a relative phrase with no month name → use them.
-      3) If no period, try heuristics (“since June”, “Sep & Oct”, “last 20 days”).
+      3) If no period, try heuristics (“since June”, “Sep & Oct”, “last 20 days”, “between … and …”, “from … until …”).
       4) Otherwise normalize period and use period_range.
     Returns (start, end, period_label, period_key_or_None)
     """
     raw = (original_text or "").lower().strip()
 
-    # If user used a relative phrase, force canonical period handling.
+    # 1) Relative phrase (“this week/month/…” or “last N days”) → canonical period
     if RELATIVE_RE.search(raw):
-        # derive normalized period from text first
-        hint_key = _hint_period_from_text(raw) if '_hint_period_from_text' in globals() else None
+        hint_key = _hint_period_from_text(raw)
         period_key = hint_key or _normalize_period(params.get("period")) or "month"
         s, e = period_range(period_key)
         return s, e, _humanize_range(s, e, original_period=period_key), period_key
 
-    # If model supplied explicit dates and the text *named a month without a year*,
-    # prefer our heuristics (avoid model inventing the year).
+    # 2) If the model supplied explicit dates:
+    #    - but the user named a month WITHOUT a year → prefer our heuristics to avoid model inventing the year
     if "start" in params and "end" in params:
         if _text_mentions_month(raw) and not _text_mentions_year(raw):
             r = _heuristic_range_from_text(raw)
@@ -226,16 +255,15 @@ def _resolve_range(params: dict, original_text: str | None = None) -> tuple[date
         end   = _parse_iso(params["end"])
         return start, end, _humanize_range(start, end), None
 
-    # No explicit dates — try heuristics for free-form ranges first
+    # 3) No explicit dates — try robust heuristics first (handles between/from/since/last N days)
     r = _heuristic_range_from_text(raw)
     if r:
         s, e = r
         return s, e, _humanize_range(s, e), None
 
-    # Fall back to normalized named period (default month)
+    # 4) Fall back to normalized named period (default month)
     period_key = _normalize_period(params.get("period")) or "month"
     if period_key not in SUPPORTED_PERIOD_KEYS:
-        # last resort: default month
         period_key = "month"
 
     s, e = period_range(period_key)
