@@ -43,6 +43,21 @@ def _month_range(year: int, month: int) -> tuple[datetime, datetime]:
     end = _end_of_day(datetime(year, month, last_day, tzinfo=timezone.utc))
     return start, end
 
+def _hint_period_from_text(text: str) -> str | None:
+    t = " ".join((text or "").lower().split())
+    # order matters: check specific before generic
+    if "last week" in t: return "last_week"
+    if "this week" in t or "current week" in t: return "week"
+    if "last month" in t or "previous month" in t: return "last_month"
+    if "this month" in t or "current month" in t: return "month"
+    if "last quarter" in t or "previous quarter" in t: return "last_quarter"
+    if "this quarter" in t or "current quarter" in t: return "quarter"
+    if "last half-year" in t or "last half year" in t: return "last_half_year"
+    if "this half-year" in t or "this half year" in t: return "half_year"
+    if "last year" in t or "previous year" in t: return "last_year"
+    if "this year" in t or "current year" in t: return "year"
+    return None
+
 def _friendly_period_label(period_key: str) -> str:
     """
     Map internal period keys to human-friendly labels.
@@ -163,46 +178,38 @@ def _normalize_period(p: Optional[str]) -> str | None:
     p = " ".join((p or "").lower().strip().split())
     return PERIOD_ALIASES.get(p, p)
 
-def _resolve_range(
-    params: dict,
-    original_text: str | None = None
-) -> tuple[datetime, datetime, str, Optional[str]]:
-    """
-    Priority:
-      1) explicit start/end in params
-      2) heuristic parse from message text
-      3) named period → period_range()
-    Returns (start, end, period_label, normalized_period_key|None)
-    """
+def _resolve_range(params: dict, original_text: str | None = None) -> tuple[datetime, datetime, str, str | None]:
     # 1) explicit start/end win
     if "start" in params and "end" in params:
-        start = _parse_iso(params["start"])
-        end   = _parse_iso(params["end"])
+        start = _parse_iso(params["start"]); end = _parse_iso(params["end"])
         return start, end, _humanize_range(start, end), None
 
-    # 2) normalize period if present
+    # NEW: derive a hint from the raw text (week/month/etc.)
+    hint_key = _hint_period_from_text(original_text or "")
+
+    # normalize any incoming period from LLM/rules
     period_key = _normalize_period(params.get("period"))
+
+    # if the text clearly says week/month/etc., let the hint override
+    if hint_key:
+        period_key = hint_key
+
+    # If still no named period, try heuristics (“since June”, “Sep and Oct”, “last 20 days”)
     if not period_key:
-        # No named period → try heuristics
-        if original_text:
-            r = _heuristic_range_from_text(original_text)
-            if r:
-                s, e = r
-                return s, e, _humanize_range(s, e), None
-        # default to this month
+        r = _heuristic_range_from_text(original_text or "")
+        if r:
+            s, e = r
+            return s, e, _humanize_range(s, e), None
         period_key = "month"
 
-    # If we got a period string but it’s not one of our supported keys, try heuristics first
+    # If period_key isn’t one of ours, try heuristics before falling back
     if period_key not in SUPPORTED_PERIOD_KEYS:
-        if original_text:
-            r = _heuristic_range_from_text(original_text)
-            if r:
-                s, e = r
-                return s, e, _humanize_range(s, e), None
-        # last resort: treat as this month
+        r = _heuristic_range_from_text(original_text or "")
+        if r:
+            s, e = r
+            return s, e, _humanize_range(s, e), None
         period_key = "month"
 
-    # 3) trusted, supported key → use period_range
     s, e = period_range(period_key)
     return s, e, _humanize_range(s, e, original_period=period_key), period_key
 
