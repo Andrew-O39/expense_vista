@@ -557,8 +557,9 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
                 actions=[]
             )
 
-    # ---- Budget status (overall) ----
+    # ---- Budget status (overall) → sum latest-per-category for the period ----
     if intent == "budget_status_period":
+        # pick normalized storage value (weekly/monthly/quarterly/...)
         period_map = {
             "week": "weekly", "last_week": "weekly",
             "month": "monthly", "last_month": "monthly",
@@ -566,30 +567,46 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
             "half_year": "half-yearly", "last_half_year": "half-yearly",
             "year": "yearly", "last_year": "yearly",
         }
-        target = period_map.get((period_key or "month"), "monthly")
-        total_budget = (
-            db.query(func.coalesce(func.sum(Budget.limit_amount), 0.0))
-              .filter(Budget.user_id == user.id,
-                      Budget.period == target,
-                      Budget.created_at <= end)
-              .scalar()
-        ) or 0.0
+        key = (period_key or _normalize_period(params.get("period")) or "month")
+        storage_period = period_map.get(key, "monthly")
+
+        # latest snapshot per category as of `end`
+        latest = _latest_budgets_by_category(db, user.id, key, end)
+        latest = [b for b in latest if float(b.limit_amount or 0.0) > 0.0 and (b.period == storage_period)]
+
+        if not latest:
+            return AssistantReply(
+                reply=f"I couldn’t find any {period_label} budgets.",
+                actions=[]
+            )
+
+        total_budget = sum(float(b.limit_amount or 0.0) for b in latest)
+
         total_spent = (
-            db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(Expense.user_id == user.id,
-                      Expense.created_at >= start,
-                      Expense.created_at <= end)
-              .scalar()
-        ) or 0.0
-        if total_budget == 0.0:
-            return AssistantReply(reply=f"I couldn’t find any {period_label} budgets.", actions=[])
+                          db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+                          .filter(
+                              Expense.user_id == user.id,
+                              Expense.created_at >= start,
+                              Expense.created_at <= end,
+                          )
+                          .scalar()
+                      ) or 0.0
+
         remaining = total_budget - total_spent
         status = "under" if remaining >= 0 else "over"
-        reply = (f"Your total {period_label} budget is {_euro(total_budget)}. "
-                 f"Total spent is {_euro(total_spent)}, so you are {status} budget by {_euro(abs(remaining))}.")
+
+        # Optional: include how many categories we summed, to set expectations
+        reply = (
+            f"Your total {period_label} budget (across {len(latest)} categories) is {_euro(total_budget)}. "
+            f"Total spent is {_euro(total_spent)}, so you are {status} budget by {_euro(abs(remaining))}."
+        )
+        assumed = (period_key is None and "start" not in params and "end" not in params)
+        if assumed:
+            reply += " (I am assuming this month — but please specify a period like 'this year' or 'this week' to change it.)"
+
         actions.append(AssistantAction(
-            type="open_expenses",
-            label="See expenses",
+            type="open_budgets",
+            label="See budgets",
             params={"start_date": start.isoformat(), "end_date": end.isoformat()},
         ))
         return AssistantReply(reply=reply, actions=actions)
