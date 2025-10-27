@@ -71,7 +71,10 @@ STOP_WORDS = {
 }
 
 def _normalize(s: str) -> str:
-    return " ".join((s or "").lower().strip().split())
+    s = (s or "").lower().strip()
+    # strip possessives (ASCII and curly apostrophes)
+    s = s.replace("'s", " ").replace("’s", " ")
+    return " ".join(s.split())
 
 def _extract_period(text: str):
     m = PERIOD_PAT.search(text)
@@ -96,6 +99,10 @@ def _valid_cat(c: str) -> bool:
 
 def _extract_category(text: str) -> str:
     t = text
+
+    # When asking for highest/lowest budgets, do NOT try to interpret that as a category
+    if "budget" in t and (any(w in t for w in EXTREME_WORDS_HIGH | EXTREME_WORDS_LOW)):
+        return ""
 
     # 1) “over/under budget on/for X”
     m = re.search(r"\b(?:over|under)\s+budget\s+(?:on|for)\s+([a-z0-9\s]+)\b", t)
@@ -140,11 +147,17 @@ def parse_intent(message: str):
         (" vs " in t or "versus" in t or "compare" in t or any(w in t for w in EXPENSE_WORDS))):
         return "income_expense_overview_period", {"period": period or "month"}
 
-    # income-only totals (e.g. “total income this month”)
+    # income-only totals
     if any(w in t for w in INCOME_WORDS) and not any(w in t for w in EXPENSE_WORDS | BUDGET_WORDS):
         return "income_in_period", {"period": period or "month"}
 
-    # budgets
+    # highest/lowest budget (overall) BEFORE generic budgets ----
+    if "budget" in t and any(w in t for w in EXTREME_WORDS_HIGH):
+        return "highest_budget_period", {"period": period or "month"}  # or "year" if you prefer
+    if "budget" in t and any(w in t for w in EXTREME_WORDS_LOW):
+        return "lowest_budget_period", {"period": period or "month"}   # or "year"
+
+    # budgets (status, optional category)
     if "budget" in t or any(w in t for w in BUDGET_WORDS):
         cat = _extract_category(rest)
         if cat:
@@ -155,18 +168,17 @@ def parse_intent(message: str):
     if any(w in t for w in TOP_WORDS) and ("category" in t or "categories" in t or any(w in t for w in EXPENSE_WORDS)):
         return "top_category_in_period", {"period": period or "month"}
 
-    # Highest/lowest budget this period
-    if "budget" in t and any(w in t for w in EXTREME_WORDS_HIGH):
-        return "highest_budget_period", {"period": period or "year"}
-    if "budget" in t and any(w in t for w in EXTREME_WORDS_LOW):
-        return "lowest_budget_period", {"period": period or "year"}
-
     # generic spend
     if any(w in t for w in EXPENSE_WORDS):
         cat = _extract_category(rest)
         if cat:
             return "spend_in_category_period", {"category": cat, "period": period or "month"}
         return "spend_in_period", {"period": period or "month"}
+
+    if "on track" in t and "quarter" in t:
+        return "on_track_quarter", {}
+
+    return "unknown", {}
 
     if "on track" in t and "quarter" in t:
         return "on_track_quarter", {}
