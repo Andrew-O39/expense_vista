@@ -516,28 +516,46 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         cat = _clean_category(params.get("category", ""))
         if not cat:
             raise HTTPException(status_code=400, detail="Could not detect a category.")
-        budget = _pick_budget(db, user.id, cat, (period_key or "month"), start, end)
-        if not budget:
-            return AssistantReply(reply=f"I couldn’t find a {period_label} budget for '{cat}'.", actions=[])
-        spent = (
-            db.query(func.coalesce(func.sum(Expense.amount), 0.0))
-              .filter(Expense.user_id == user.id,
-                      func.lower(Expense.category) == cat,
-                      Expense.created_at >= start,
-                      Expense.created_at <= end)
-              .scalar()
-        ) or 0.0
-        remaining = (budget.limit_amount or 0) - spent
-        status = "under" if remaining >= 0 else "over"
-        reply = (f"Your {period_label} budget for '{cat}' is {_euro(budget.limit_amount or 0)}. "
-                 f"You’ve spent {_euro(spent)}, so you are {status} budget by {_euro(abs(remaining))}.")
-        actions.append(AssistantAction(
-            type="open_budgets",
-            label="See budgets",
-            params={"search": cat, "category": cat,
-                    "start_date": start.isoformat(), "end_date": end.isoformat()},
-        ))
-        return AssistantReply(reply=reply, actions=actions)
+        try:
+            budget = _pick_budget(db, user.id, cat, (period_key or "month"), start, end)
+            if not budget:
+                return AssistantReply(
+                    reply=f"I couldn’t find a {period_label} budget for '{cat}'.",
+                    actions=[]
+                )
+
+            spent = (
+                        db.query(func.coalesce(func.sum(Expense.amount), 0.0))
+                        .filter(
+                            Expense.user_id == user.id,
+                            func.lower(Expense.category) == cat,
+                            Expense.created_at >= start,
+                            Expense.created_at <= end,
+                        )
+                        .scalar()
+                    ) or 0.0
+
+            limit_amt = float(budget.limit_amount or 0.0)
+            remaining = limit_amt - spent
+            status = "under" if remaining >= 0 else "over"
+
+            reply = (
+                f"Your {period_label} budget for '{cat}' is {_euro(limit_amt)}. "
+                f"You’ve spent {_euro(spent)}, so you are {status} budget by {_euro(abs(remaining))}."
+            )
+            actions.append(AssistantAction(
+                type="open_budgets",
+                label="See budgets",
+                params={"search": cat, "category": cat,
+                        "start_date": start.isoformat(), "end_date": end.isoformat()},
+            ))
+            return AssistantReply(reply=reply, actions=actions)
+        except Exception as e:
+            # log e if you have a logger
+            return AssistantReply(
+                reply=f"I couldn’t find a {period_label} budget for '{cat}'.",
+                actions=[]
+            )
 
     # ---- Budget status (overall) ----
     if intent == "budget_status_period":
