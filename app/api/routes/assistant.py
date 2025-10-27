@@ -17,6 +17,7 @@ from app.services.llm_client import llm_complete_json
 from app.utils.assistant_dates import period_range
 import re
 from calendar import monthrange
+from collections import OrderedDict
 
 import logging
 logger = logging.getLogger("assistant")
@@ -42,6 +43,45 @@ def _month_range(year: int, month: int) -> tuple[datetime, datetime]:
     last_day = monthrange(year, month)[1]
     end = _end_of_day(datetime(year, month, last_day, tzinfo=timezone.utc))
     return start, end
+
+
+def _latest_budgets_by_category(
+    db: Session,
+    user_id: int,
+    period_key: str,
+    end_dt: datetime,
+) -> list[Budget]:
+    """Return the most recent budget per category (created_at <= end_dt) for a given period_key."""
+    period_map = {
+        "week": "weekly", "last_week": "weekly",
+        "month": "monthly", "last_month": "monthly",
+        "quarter": "quarterly", "last_quarter": "quarterly",
+        "half_year": "half-yearly", "last_half_year": "half-yearly",
+        "year": "yearly", "last_year": "yearly",
+    }
+    target = period_map.get(period_key, "monthly")
+
+    rows = (
+        db.query(Budget)
+          .filter(
+              Budget.user_id == user_id,
+              Budget.period == target,
+              Budget.created_at <= end_dt,
+          )
+          .order_by(Budget.category.asc(), Budget.created_at.desc())
+          .all()
+    )
+
+    # keep only the latest per category (case-insensitive)
+    latest: "OrderedDict[str, Budget]" = OrderedDict()
+    for b in rows:
+        cat = (b.category or "").strip().lower()
+        if not cat:
+            continue
+        if cat not in latest:
+            latest[cat] = b  # first seen is latest due to DESC ordering
+
+    return list(latest.values())
 
 def _hint_period_from_text(text: str) -> str | None:
     t = " ".join((text or "").lower().split())
@@ -536,59 +576,43 @@ def ai_assistant(payload: AssistantMessage, db: Session = Depends(get_db), user=
         ))
         return AssistantReply(reply=reply, actions=actions)
 
-    # ---- Highest budget in a period ----
-    if intent == "highest_budget_period":
-        # Map to Budget.period
-        period_map = {
-            "week": "weekly", "last_week": "weekly",
-            "month": "monthly", "last_month": "monthly",
-            "quarter": "quarterly", "last_quarter": "quarterly",
-            "half_year": "half-yearly", "last_half_year": "half-yearly",
-            "year": "yearly", "last_year": "yearly",
-        }
-        target = period_map.get((period_key or _normalize_period(params.get("period")) or "year"), "yearly")
-        row = (
-            db.query(Budget.category, Budget.limit_amount)
-            .filter(Budget.user_id == user.id,
-                    Budget.period == target,
-                    Budget.created_at <= end)
-            .order_by(desc(Budget.limit_amount))
-            .first()
-        )
-        if not row:
-            return AssistantReply(reply=f"I couldn’t find any {period_label} budgets.", actions=[])
-        cat, amt = row[0], float(row[1] or 0.0)
-        reply = f"Your highest {period_label} budget is '{cat}' at {_euro(amt)}."
-        actions.append(AssistantAction(type="open_budgets", label="See budgets",
-                                       params={"category": cat, "start_date": start.isoformat(),
-                                               "end_date": end.isoformat()}))
-        return AssistantReply(reply=reply, actions=actions)
+    # ---- Highest / Lowest budget in a period (combined) ----
+    if intent in ("highest_budget_period", "lowest_budget_period"):
+        # Figure out which period family we’re in (weekly/monthly/quarterly/…)
+        key = (period_key or _normalize_period(params.get("period")) or "year")
 
-    # ---- Lowest budget in a period ----
-    if intent == "lowest_budget_period":
-        period_map = {
-            "week": "weekly", "last_week": "weekly",
-            "month": "monthly", "last_month": "monthly",
-            "quarter": "quarterly", "last_quarter": "quarterly",
-            "half_year": "half-yearly", "last_half_year": "half-yearly",
-            "year": "yearly", "last_year": "yearly",
-        }
-        target = period_map.get((period_key or _normalize_period(params.get("period")) or "year"), "yearly")
-        row = (
-            db.query(Budget.category, Budget.limit_amount)
-            .filter(Budget.user_id == user.id,
-                    Budget.period == target,
-                    Budget.created_at <= end)
-            .order_by(Budget.limit_amount.asc())
-            .first()
-        )
-        if not row:
-            return AssistantReply(reply=f"I couldn’t find any {period_label} budgets.", actions=[])
-        cat, amt = row[0], float(row[1] or 0.0)
-        reply = f"Your lowest {period_label} budget is '{cat}' at {_euro(amt)}."
-        actions.append(AssistantAction(type="open_budgets", label="See budgets",
-                                       params={"category": cat, "start_date": start.isoformat(),
-                                               "end_date": end.isoformat()}))
+        # Get latest-per-category snapshots up to `end`
+        latest = _latest_budgets_by_category(db, user.id, key, end)
+
+        # Keep only meaningful amounts (skip 0/None)
+        latest = [b for b in latest if float(b.limit_amount or 0.0) > 0.0]
+
+        if not latest:
+            return AssistantReply(
+                reply=f"I couldn’t find any {period_label} budgets.",
+                actions=[]
+            )
+
+        # Pick highest or lowest by limit_amount
+        chooser = max if intent == "highest_budget_period" else min
+        pick = chooser(latest, key=lambda b: float(b.limit_amount or 0.0))
+
+        cat = (pick.category or "").strip()
+        amt = float(pick.limit_amount or 0.0)
+        adjective = "highest" if intent == "highest_budget_period" else "lowest"
+
+        reply = f"Your {adjective} {period_label} budget is '{cat}' at {_euro(amt)}."
+
+        actions.append(AssistantAction(
+            type="open_budgets",
+            label="See budgets",
+            params={
+                "search": cat.lower(),
+                "category": cat.lower(),
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+            },
+        ))
         return AssistantReply(reply=reply, actions=actions)
 
     # ---- Top category ----

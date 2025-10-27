@@ -57,7 +57,7 @@ EXPENSE_WORDS = {"spend","spent","expense","expenses","cost","costs"}
 INCOME_WORDS  = {"income","incomes","earnings","revenue"}
 BUDGET_WORDS  = {"budget","budgets","over","under","remaining","left","status","on track","track"}
 TOP_WORDS     = {"top","biggest","largest","most"}
-EXTREME_WORDS_HIGH = {"highest","largest","biggest","top","max","maximum"}
+EXTREME_WORDS_HIGH = {"highest","largest","biggest","top","max","maximum","hightest"}
 EXTREME_WORDS_LOW  = {"lowest","smallest","min","minimum"}
 
 
@@ -72,9 +72,10 @@ STOP_WORDS = {
 
 def _normalize(s: str) -> str:
     s = (s or "").lower().strip()
-    # strip possessives (ASCII and curly apostrophes)
+    # strip possessives ("what's" → "what")
     s = s.replace("'s", " ").replace("’s", " ")
     return " ".join(s.split())
+
 
 def _extract_period(text: str):
     m = PERIOD_PAT.search(text)
