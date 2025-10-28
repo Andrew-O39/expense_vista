@@ -22,7 +22,7 @@ from app.db.models.password_reset import PasswordResetToken
 # Schemas
 from app.schemas.token import Token
 from app.schemas.user import UserCreate, UserOut
-from app.schemas.auth_email import ResendVerificationIn
+from app.schemas.auth_email import ResendVerificationIn, VerifyTokenIn
 from app.schemas.common import MessageOut  # simple {"msg": "..."} schema
 from app.schemas.auth_password import (
     PasswordResetRequest,
@@ -82,6 +82,32 @@ def _send_verification_email(user: User, db: Session, ttl_hours: int = 24) -> No
         # Don't crash signup flows if email provider hiccups
         pass
 
+
+@router.post("/verify-email", response_model=MessageOut)
+def verify_email_post(
+    payload: VerifyTokenIn,
+    db: Session = Depends(get_db),
+):
+    token_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
+    user = (
+        db.query(User)
+        .filter(User.verification_token_hash == token_hash)
+        .first()
+    )
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    if not user.verification_token_expires_at or user.verification_token_expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Token expired")
+
+    user.is_verified = True
+    user.verification_token_hash = None
+    user.verification_token_expires_at = None
+    db.add(user)
+    db.commit()
+
+    return {"msg": "Email verified successfully. You can now sign in."}
+
 # -------------------------
 # Login
 # -------------------------
@@ -115,24 +141,46 @@ def login(
 # -------------------------
 # Register
 # -------------------------
+# app/api/routes/auth.py  (register route)
+
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def register_user(
     user: UserCreate,
     db: Session = Depends(get_db),
 ):
+    # Uniqueness checks
     if crud_user.get_user_by_username(db, user.username):
         raise HTTPException(status_code=400, detail="Username is already in use")
-
     if crud_user.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail="Email is already in use")
 
+    # Create user (is_verified defaults to False)
     created = crud_user.create_user(db, user)
 
-    # Send verification email
+    # Issue verification token (hash only) and send email
+    raw = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    created.verification_token_hash = token_hash
+    created.verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    db.add(created)
+    db.commit()
+
+    verify_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={raw}"
+    html = _render_verify_email(
+        username=created.username,
+        verify_url=verify_url,
+        ttl_hours=24,
+    )
+
     try:
-        _send_verification_email(created, db, ttl_hours=24)
-    except Exception:
-        pass
+        ok = send_alert_email(
+            to_email=created.email,
+            subject="Verify your ExpenseVista email",
+            html_content=html,
+        )
+        print(f"[VERIFY EMAIL] sent={ok} to={created.email} url={verify_url}")
+    except Exception as e:
+        print(f"[VERIFY EMAIL ERROR] {e}")
 
     return created
 
@@ -140,72 +188,45 @@ def register_user(
 # Resend Verification
 # -------------------------
 @router.post("/resend-verification", response_model=MessageOut)
-async def resend_verification(
-    request: Request,
+def resend_verification(
+    payload: Optional[ResendVerificationIn] = None,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """
-    Resend a verification email.
-
-    - If authenticated, uses the current user (no body required).
-    - If not authenticated, expect JSON body { "email": "<address>" }.
-    - Always returns 200 with a generic message to avoid email enumeration.
-    """
     user: Optional[User] = None
 
     if current_user:
         user = current_user
     else:
-        # Body is optional; parse carefully, and don’t 422 on missing/invalid JSON
-        email_value: Optional[str] = None
-        try:
-            data = await request.json()
-            if isinstance(data, dict):
-                email_value = data.get("email")
-        except Exception:
-            email_value = None
-
-        if not email_value:
-            # This is a client error; tell them they must send an email when unauthenticated
+        email = (payload.email if payload else None)
+        if not email:
             raise HTTPException(status_code=422, detail="Email is required when not authenticated.")
-
-        try:
-            # Validate format lightly with EmailStr
-            email_norm = EmailStr(email_value)
-        except Exception:
-            # Still avoid enumeration—act as if we sent it
-            return {"msg": "If this email is registered, a verification message will be sent shortly."}
-
-        user = db.query(User).filter(User.email == str(email_norm).lower()).first()
+        user = db.query(User).filter(User.email == email).first()
         if not user:
-            # Avoid enumeration
+            # Don’t leak whether the email exists
             return {"msg": "If this email is registered, a verification message will be sent shortly."}
 
     if user.is_verified:
         return {"msg": "This email is already verified."}
 
-    # Issue a new token (store HASH only)
-    raw_token = secrets.token_urlsafe(32)
-    user.verification_token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    # New token
+    raw = secrets.token_urlsafe(32)
+    user.verification_token_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     user.verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     db.add(user)
     db.commit()
 
-    verify_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={raw_token}"
-    html = _render_verify_email(user.username, verify_url, ttl_hours=24)
+    verify_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={raw}"
+    html = _render_verify_email(user.username, verify_url, 24)
 
     try:
-        send_alert_email(
-            to_email=user.email,
-            subject="Verify your ExpenseVista email",
-            html_content=html,
-        )
-    except Exception:
-        # Swallow to avoid leaking delivery issues / enumeration info
-        pass
+        ok = send_alert_email(user.email, "Verify your ExpenseVista email", html)
+        print(f"[RESEND VERIFY] sent={ok} to={user.email} url={verify_url}")
+    except Exception as e:
+        print(f"[RESEND VERIFY ERROR] {e}")
 
     return {"msg": "If this email is registered, a verification message will be sent shortly."}
+
 
 @router.post("/resend-verification/me", response_model=MessageOut)
 def resend_verification_me(
