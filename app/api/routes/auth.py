@@ -19,6 +19,8 @@ from app.api.deps import get_current_user, get_current_user_optional
 from app.db.models.user import User
 from app.db.models.password_reset import PasswordResetToken
 
+from sqlalchemy.exc import IntegrityError
+
 # Schemas
 from app.schemas.token import Token
 from app.schemas.user import UserCreate, UserOut
@@ -154,8 +156,12 @@ def register_user(
     if crud_user.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail="Email is already in use")
 
-    # Create user (is_verified defaults to False)
-    created = crud_user.create_user(db, user)
+    try:
+        created = crud_user.create_user(db, user)
+    except IntegrityError:
+        db.rollback()
+        # In case of race conditions / double-submit:
+        raise HTTPException(status_code=400, detail="Username or email is already in use")
 
     # Issue verification token (hash only) and send email
     raw = secrets.token_urlsafe(32)
