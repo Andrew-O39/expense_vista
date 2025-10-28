@@ -34,7 +34,7 @@ from app.utils.email_sender import send_alert_email  # SES sender
 router = APIRouter(tags=["Authentication"])
 
 def _render_verify_email(username: str, verify_url: str, ttl_hours: int = 24) -> str:
-    tmpl_path = Path(__file__).resolve().parents[2] / "templates" / "verify_email.html"
+    tmpl_path = Path(__file__).resolve().parents[2] / "templates" / "email_verify.html"
     if not tmpl_path.exists():
         return f"""
         <html><body>
