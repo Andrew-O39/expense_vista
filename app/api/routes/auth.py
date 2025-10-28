@@ -26,27 +26,13 @@ from app.schemas.auth_password import (
     PasswordResetRequest,
     PasswordResetConfirm,
 )
-
 # Email
 from app.utils.email_sender import send_alert_email  # SES sender
 
 router = APIRouter(tags=["Authentication"])
 
 def _render_verify_email(username: str, verify_url: str, ttl_hours: int = 24) -> str:
-    """
-    Render HTML for the verification email from app/templates/verify_email.html.
-    Template variables: username, verify_url, expires_hours, current_year
-    """
-    tmpl_path = Path(__file__).resolve().parents[2] / "templates" / "email_verify.html"
-    if not tmpl_path.exists():
-        # Fallback tiny HTML if template is missing
-        return f"""
-        <html><body>
-            <p>Hi {username},</p>
-            <p>Please verify your email: <a href="{verify_url}">{verify_url}</a></p>
-            <p>This link expires in {ttl_hours} hours.</p>
-        </body></html>
-        """
+    tmpl_path = Path(__file__).resolve().parents[2] / "templates" / "verify_email.html"
     html = Template(tmpl_path.read_text(encoding="utf-8")).render(
         username=username,
         verify_url=verify_url,
@@ -143,30 +129,50 @@ def register_user(
 # -------------------------
 # Resend Verification
 # -------------------------
-@router.post("/verify/resend", response_model=MessageOut)
 @router.post("/resend-verification", response_model=MessageOut)
 def resend_verification(
-    email: EmailStr = Body(..., embed=True),
+    payload: Optional[ResendVerificationIn] = None,
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
-    Resend a verification email to the logged-in user (if not verified).
-    Optional: add throttling if needed using the stored expiry.
+    Resend a verification email.
+
+    - If the caller is authenticated, we use their account.
+    - Otherwise, require an 'email' in the JSON body.
     """
-    user = crud_user.get_user_by_email(db, email=email)
-    # Always return 200 to avoid revealing which emails exist
-    if not user:
-        return {"msg": "If the email is registered, a new verification link has been sent."}
+    user: Optional[User] = None
+
+    if current_user:
+        user = current_user
+    else:
+        email = (payload.email if payload else None)
+        if not email:
+            raise HTTPException(status_code=422, detail="Email is required when not authenticated.")
+        user = db.query(User).filter(User.email == email).first()
+        # Always 200 for non-existent emails (avoid enumeration)
+        if not user:
+            return {"msg": "If this email is registered, a verification message will be sent shortly."}
 
     if user.is_verified:
-        return {"msg": "Email is already verified."}
+        return {"msg": "This email is already verified."}
+
+    # issue a new token (hash stored)
+    raw = secrets.token_urlsafe(32)
+    user.verification_token_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    user.verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    db.add(user)
+    db.commit()
+
+    verify_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={raw}"
+    html = _render_verify_email(user.username, verify_url, 24)
 
     try:
-        _send_verification_email(user, db, ttl_hours=24)
+        send_alert_email(to_email=user.email, subject="Verify your ExpenseVista email", html_content=html)
     except Exception:
         pass
 
-    return {"msg": "If the email is registered, a new verification link has been sent."}
+    return {"msg": "If this email is registered, a verification message will be sent shortly."}
 
 @router.post("/resend-verification/me", response_model=MessageOut)
 def resend_verification_me(
