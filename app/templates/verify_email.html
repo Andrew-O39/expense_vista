@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Verify your email</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Preheader: appears in inbox previews -->
+  <style>
+    .preheader { display:none !important; visibility:hidden; opacity:0; color:transparent; height:0; width:0; overflow:hidden; mso-hide:all; }
+    a { color:#2563eb; }
+  </style>
+</head>
+<body style="margin:0; padding:0; background:#f6f8fb;">
+  <span class="preheader">Confirm your email to finish setting up ExpenseVista.</span>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f6f8fb; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px; background:#ffffff; border:1px solid #e5e7eb; border-radius:12px;">
+          <!-- Header -->
+          <tr>
+            <td style="background:#1e40af; color:#ffffff; padding:20px 24px; border-top-left-radius:12px; border-top-right-radius:12px;">
+              <h1 style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:24px;">Verify your email</h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:24px; font-family:Arial,Helvetica,sans-serif; color:#111827; font-size:16px; line-height:1.6;">
+              <p style="margin:0 0 12px;">Hi {{ username }},</p>
+              <p style="margin:0 0 16px;">
+                Thanks for signing up for <strong>ExpenseVista</strong>! Please confirm your email to secure your account.
+              </p>
+
+              <!-- Button (bulletproof) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto;">
+                <tr>
+                  <td align="center" bgcolor="#2563eb" style="border-radius:8px;">
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ verify_url }}" arcsize="12%" strokecolor="#2563eb" fillcolor="#2563eb" style="height:44px; v-text-anchor:middle; width:200px;">
+                      <w:anchorlock/>
+                      <center style="color:#ffffff; font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold;">
+                        Verify Email
+                      </center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-- -->
+                    <a href="{{ verify_url }}"
+                       style="display:inline-block; padding:12px 18px; font-family:Arial,Helvetica,sans-serif; font-size:16px; font-weight:bold; line-height:20px; color:#ffffff; text-decoration:none; border-radius:8px;">
+                      Verify Email
+                    </a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 8px;">If the button doesn’t work, copy and paste this link into your browser:</p>
+              <p style="margin:0 0 16px; word-break:break-all;">
+                <a href="{{ verify_url }}" style="text-decoration:underline; color:#2563eb;">{{ verify_url }}</a>
+              </p>
+
+              <p style="margin:0 0 16px;">This link expires in {{ expires_hours }} hours.</p>
+
+              <p style="margin:16px 0 0; font-size:14px; color:#374151;">
+                If you didn’t create this account, you can safely ignore this email.
+              </p>
+
+              <p style="margin:24px 0 0;">Cheers,<br/>The ExpenseVista Team</p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f9fafb; color:#6b7280; font-family:Arial,Helvetica,sans-serif; font-size:12px; text-align:center; padding:16px; border-bottom-left-radius:12px; border-bottom-right-radius:12px;">
+              © {{ current_year }} ExpenseVista
+            </td>
+          </tr>
+        </table>
+
+        <!-- Text-only fall back notice (your backend also sends a text part) -->
+        <div style="font-family:Arial,Helvetica,sans-serif; font-size:0; line-height:0; height:0; overflow:hidden; color:transparent;">&nbsp;</div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
