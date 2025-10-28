@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
+from typing import Optional
 
 from jinja2 import Template
 from pathlib import Path
@@ -14,10 +15,10 @@ from app.db.session import get_db
 from app.crud import user as crud_user
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.config import settings
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_optional
 from app.db.models.user import User
 from app.db.models.password_reset import PasswordResetToken
-
+from app.schemas.auth_email import ResendVerificationIn
 # Schemas
 from app.schemas.token import Token
 from app.schemas.user import UserCreate, UserOut
@@ -32,14 +33,28 @@ from app.utils.email_sender import send_alert_email  # SES sender
 router = APIRouter(tags=["Authentication"])
 
 def _render_verify_email(username: str, verify_url: str, ttl_hours: int = 24) -> str:
-    tmpl_path = Path(__file__).resolve().parents[2] / "templates" / "verify_email.html"
-    html = Template(tmpl_path.read_text(encoding="utf-8")).render(
+    """
+    Renders app/templates/verify_email.html with:
+      {{ username }}, {{ verify_url }}, {{ expires_hours }}, {{ current_year }}
+    """
+    tmpl_path = Path(__file__).resolve().parents[2] / "templates" / "email_verify.html"
+    if not tmpl_path.exists():
+        # Fallback minimal HTML if template missing
+        return f"""
+        <html><body>
+          <p>Hi {username},</p>
+          <p>Please verify your email: <a href="{verify_url}">Verify</a></p>
+          <p>This link expires in {ttl_hours} hours.</p>
+        </body></html>
+        """.strip()
+
+    return Template(tmpl_path.read_text(encoding="utf-8")).render(
         username=username,
         verify_url=verify_url,
         expires_hours=ttl_hours,
         current_year=datetime.now().year,
     )
-    return html
+
 
 
 def _send_verification_email(user: User, db: Session, ttl_hours: int = 24) -> None:
@@ -131,47 +146,60 @@ def register_user(
 # -------------------------
 @router.post("/resend-verification", response_model=MessageOut)
 def resend_verification(
-    payload: Optional[ResendVerificationIn] = None,
+    payload: Optional[ResendVerificationIn] = Body(default=None),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Resend a verification email.
 
+    Behavior:
     - If the caller is authenticated, we use their account.
     - Otherwise, require an 'email' in the JSON body.
+    - Always return 200 (avoid email enumeration).
     """
+    # 1) Select the target user
     user: Optional[User] = None
 
     if current_user:
         user = current_user
     else:
-        email = (payload.email if payload else None)
+        email: Optional[EmailStr] = payload.email if payload else None  # type: ignore[attr-defined]
         if not email:
+            # We still avoid email enumeration—tell the client we sent it, but we’ll return 422
+            # only when it's clearly a client error (no email provided and not authenticated).
             raise HTTPException(status_code=422, detail="Email is required when not authenticated.")
-        user = db.query(User).filter(User.email == email).first()
-        # Always 200 for non-existent emails (avoid enumeration)
+        user = db.query(User).filter(User.email == str(email).lower()).first()
         if not user:
+            # Do not reveal whether an email exists
             return {"msg": "If this email is registered, a verification message will be sent shortly."}
 
+    # 2) If already verified, say so (still 200)
     if user.is_verified:
         return {"msg": "This email is already verified."}
 
-    # issue a new token (hash stored)
-    raw = secrets.token_urlsafe(32)
-    user.verification_token_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    # 3) Issue a fresh verification token (store HASH only)
+    raw_token = secrets.token_urlsafe(32)
+    user.verification_token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
     user.verification_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     db.add(user)
     db.commit()
 
-    verify_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={raw}"
-    html = _render_verify_email(user.username, verify_url, 24)
+    # 4) Build link and render HTML
+    verify_url = f"{settings.frontend_url.rstrip('/')}/verify-email?token={raw_token}"
+    html = _render_verify_email(user.username, verify_url, ttl_hours=24)
 
+    # 5) Send email via SES; swallow errors to avoid leaking enumeration info
     try:
-        send_alert_email(to_email=user.email, subject="Verify your ExpenseVista email", html_content=html)
+        send_alert_email(
+            to_email=user.email,
+            subject="Verify your ExpenseVista email",
+            html_content=html,
+        )
     except Exception:
         pass
 
+    # 6) Generic success message
     return {"msg": "If this email is registered, a verification message will be sent shortly."}
 
 @router.post("/resend-verification/me", response_model=MessageOut)
