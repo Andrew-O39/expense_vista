@@ -136,8 +136,19 @@ def login(
             detail="Email not verified. Please check your inbox (or request a new verification link).",
         )
 
+    # One-time server-side flag
+    show_welcome = bool(user.first_login)
+    if user.first_login:  # flip it off after first successful login
+        user.first_login = False
+        db.add(user)
+        db.commit()
+
     access_token = create_access_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "show_welcome": show_welcome,
+    }
 
 
 # -------------------------
