@@ -26,8 +26,9 @@ Whether you’re an individual, freelancer, or household manager — ExpenseVist
 ### 1️⃣ Sign Up or Log In
 
 1. Go to your ExpenseVista web app URL (expensevista.com).  
-2. Click **Sign Up** if you’re new, or **Log In** if you already have an account.  
-3. You’ll receive a verification link or welcome email.  
+2. Click **Register** if you’re new, or **Log In** if you already have an account.  
+3. You’ll receive a verification link or welcome email.
+
 
 Your account uses **secure JWT authentication**, keeping your data private and safe.
 
