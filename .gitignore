@@ -21,3 +21,5 @@ htmlcov/
 
 # OS metadata
 .DS_Store.env.prod
+
+.env.prod
