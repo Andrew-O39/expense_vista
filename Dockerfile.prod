@@ -1,0 +1,31 @@
+# ---- Base image ----
+FROM python:3.11-slim AS base
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+WORKDIR /app
+
+# System deps (psycopg2 needs libpq; adjust if you use psycopg2-binary)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libpq-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---- Install Python deps with cache ----
+# If you have a constraints file, copy it here too and add --constraint=constraints.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ---- App code ----
+# Copy everything, set ownership, and make entrypoint executable while still root
+COPY . .
+RUN useradd -m appuser \
+ && chown -R appuser:appuser /app \
+ && chmod +x /app/start.sh
+
+# ---- Drop privileges ----
+USER appuser
+
+# Gunicorn+Uvicorn entrypoint (start.sh runs Alembic then launches app)
+CMD ["/app/start.sh"]
