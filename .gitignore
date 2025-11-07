@@ -20,4 +20,4 @@ venv/
 htmlcov/
 
 # OS metadata
-.DS_Store
+.DS_Store.env.prod
