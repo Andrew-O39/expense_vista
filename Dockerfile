@@ -28,7 +28,13 @@ CMD ["uvicorn","main:app","--host","0.0.0.0","--port","8000","--reload"]
 FROM deps AS prod
 WORKDIR /app
 COPY . .
+
+# Ensure Unix line endings and executable bit for the entrypoint
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
+
+# Optional non-root (good practice)
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
+
 EXPOSE 8000
-CMD ["/app/start.sh"]   # your start.sh runs alembic + gunicorn
+CMD ["/app/start.sh"]
