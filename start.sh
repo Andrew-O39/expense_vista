@@ -1,13 +1,16 @@
 #!/usr/bin/env sh
 set -eu
 
-# Make uvicorn honor proxy headers and the mount path
-export UVICORN_CMD_ARGS="--proxy-headers --forwarded-allow-ips='*' --root-path /api"
+# Make Uvicorn (the Gunicorn worker) trust proxy headers coming from nginx
+# and correctly infer scheme = https and root_path = /api.
+# These env vars are respected by uvicorn's Gunicorn worker.
+export PROXY_HEADERS=1
+export FORWARDED_ALLOW_IPS="*"
 
-# DB migrations
+# Run DB migrations
 alembic upgrade head
 
-# Gunicorn + UvicornWorker
+# Start Gunicorn + Uvicorn workers
 exec gunicorn main:app \
   --workers 2 \
   --worker-class uvicorn.workers.UvicornWorker \
