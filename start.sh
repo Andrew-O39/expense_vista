@@ -1,16 +1,15 @@
 #!/usr/bin/env sh
 set -eu
 
-# Make Uvicorn (the Gunicorn worker) trust proxy headers coming from nginx
-# and correctly infer scheme = https and root_path = /api.
-# These env vars are respected by uvicorn's Gunicorn worker.
+# Let Uvicorn (inside Gunicorn) trust proxy headers from nginx/Caddy
+# so it can correctly infer client IP, scheme (https), etc.
 export PROXY_HEADERS=1
 export FORWARDED_ALLOW_IPS="*"
 
-# Run DB migrations
+# 1) Run DB migrations
 alembic upgrade head
 
-# Start Gunicorn + Uvicorn workers
+# 2) Start Gunicorn with Uvicorn workers
 exec gunicorn main:app \
   --workers 2 \
   --worker-class uvicorn.workers.UvicornWorker \
